@@ -2,10 +2,10 @@ import Icon from './Icon.jsx';
 import FileRow from './FileRow.jsx';
 import { countLabel, formatSize, totalSize } from '../lib/format.js';
 
-// The received file list. `progress` maps a file index, or "zip" for the
-// download-all archive, to 0..100 while that download is running.
-export default function ShareFiles({ files, expiryText, progress = {}, onDownload, onDownloadAll, onPreview }) {
-  const zip = progress.zip;
+// The received file list. `downloads` is what useShareDownloads returns.
+// Leave out `onPreview` to make the files download-only.
+export default function ShareFiles({ files, expiryText, downloads, onPreview }) {
+  const { states, error, allBusy, allUsed, hrefFor, save, saveAll, markStarted } = downloads;
   return (
     <div className="g">
       <div className="rule" />
@@ -15,16 +15,24 @@ export default function ShareFiles({ files, expiryText, progress = {}, onDownloa
           <div className="strong">{formatSize(totalSize(files))}</div>
           <div>{expiryText}</div>
         </div>
-        <button className="btn btn-primary zip-btn keep-opacity" disabled={zip != null} onClick={onDownloadAll}>
-          <span>{zip == null ? 'Download all (.zip)' : zip >= 100 ? 'Zip complete' : `Downloading ${zip}%`}</span>
+        <button className="btn btn-primary btn-tall" disabled={allBusy || allUsed} onClick={saveAll}>
+          <span>Download all</span>
           <Icon name="download" size={24} invert />
-          <span className="zip-bar" style={{ width: `${zip ?? 0}%` }} />
         </button>
+        {error && <p className="notice" role="alert">{error}</p>}
       </div>
       <div className="con">
         <div className="m8 file-list">
           {files.map((file, i) => (
-            <FileRow key={i} file={file} progress={progress[i]} onPreview={() => onPreview(i)} onDownload={() => onDownload(i)} />
+            <FileRow
+              key={file.id}
+              file={file}
+              href={hrefFor(file)}
+              state={states[file.id]}
+              onPreview={onPreview && (() => onPreview(i))}
+              onDownload={() => save(file)}
+              onStarted={() => markStarted(file)}
+            />
           ))}
         </div>
       </div>

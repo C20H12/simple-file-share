@@ -17,6 +17,7 @@ const TAG_BYTES = 16;
 const KDF = { name: 'PBKDF2', hash: 'SHA-512', iterations: 210_000 };
 
 export const toBase64 = (bytes) => btoa(String.fromCharCode(...bytes));
+export const fromBase64 = (text) => Uint8Array.from(atob(text), (c) => c.charCodeAt(0));
 
 const chunkCount = (size) => Math.max(1, Math.ceil(size / CHUNK_SIZE));
 
@@ -24,8 +25,9 @@ export const encryptedSize = (size) => size + TAG_BYTES * chunkCount(size);
 
 export const randomBytes = (n) => crypto.getRandomValues(new Uint8Array(n));
 
-// Returns { key, verifier, kdf } for a new share; `kdf` goes to the server so
-// receivers can repeat the derivation.
+// Returns { key, verifier, kdf }. A sender calls this with just the password
+// and sends `kdf` to the server; a receiver passes the salt and iterations
+// from that `kdf` to arrive at the same key and verifier.
 export async function deriveShareKeys(password, salt = randomBytes(16), iterations = KDF.iterations) {
   const material = await crypto.subtle.importKey('raw', new TextEncoder().encode(password), 'PBKDF2', false, ['deriveBits']);
   const bits = new Uint8Array(await crypto.subtle.deriveBits({ ...KDF, salt, iterations }, material, 512));
@@ -58,3 +60,8 @@ export async function encryptFile(file, key, nonce, { onProgress, signal } = {})
   }
   return new Blob(parts, { type: 'application/octet-stream' });
 }
+
+// Decrypts one stored chunk (ciphertext + tag). Rejects if the password was
+// wrong or the data was altered or cut short.
+export const decryptChunk = (key, nonce, index, isLast, data) =>
+  crypto.subtle.decrypt(chunkParams(nonce, index, isLast), key, data);

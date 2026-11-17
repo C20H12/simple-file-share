@@ -1,39 +1,72 @@
+import { Suspense, lazy, useEffect, useRef, useState } from 'react';
 import Icon from './Icon.jsx';
 import { canPreview, formatSize, isPdf } from '../lib/format.js';
+import { saveBlob } from '../lib/download.js';
 
-// Page count is estimated from file size until real previews are served.
-const pageCount = (file) => Math.max(1, Math.round(file.size / 6e5));
+const PdfPages = lazy(() => import('./PdfPages.jsx'));
 
-function PdfPages({ count }) {
-  return (
-    <div className="pv-pages" tabIndex={0} role="group" aria-label="Document pages">
-      {Array.from({ length: count }, (_, k) => (
-        <div
-          key={k}
-          className="pv-page"
-          style={{ backgroundSize: `${88 + ((k * 5) % 12)}% ${k % 3 === 2 ? 52 : 76}%` }}
-        >
-          <span className="head" style={{ width: `${k ? 34 + ((k * 13) % 30) : 62}%`, height: k ? 9 : 16 }} />
-          <span className="num">{k + 1}</span>
-        </div>
-      ))}
-    </div>
-  );
-}
+const Note = ({ children }) => <div className="pv-image"><span className="pv-note truncate">{children}</span></div>;
 
-export default function PreviewDialog({ files, index, progress, onNavigate, onDownload, onClose }) {
+// Shows file `index` of `files`.
+//   load(file)   resolves with the file's Blob
+//   hrefFor(file) the file's direct download link, or undefined if it has to be
+//                 decrypted, in which case Download saves the copy already loaded here
+export default function PreviewDialog({ files, index, load, hrefFor, onNavigate, onClose }) {
   const file = files[index];
-  const previewable = files.map((_, i) => i).filter((i) => canPreview(files[i].name));
+  const previewable = files.map((_, i) => i).filter((i) => canPreview(files[i]));
   const pos = previewable.indexOf(index);
   const pdf = isPdf(file.name);
-  const pages = pdf ? pageCount(file) : 1;
-  const active = progress != null;
+  const href = hrefFor(file);
+
+  // loading | ready (with blob, and url for images) | failed
+  const [view, setView] = useState({ status: 'loading' });
+  const [pages, setPages] = useState(null);
+  const loadRef = useRef(load);
+  loadRef.current = load;
+  useEffect(() => {
+    let live = true;
+    let url;
+    setView({ status: 'loading' });
+    setPages(null);
+    loadRef.current(files[index])
+      .then((blob) => {
+        if (!live) return;
+        if (!isPdf(files[index].name)) url = URL.createObjectURL(blob);
+        setView({ status: 'ready', blob, url });
+      })
+      .catch(() => { if (live) setView({ status: 'failed' }); });
+    return () => {
+      live = false;
+      if (url) URL.revokeObjectURL(url);
+    };
+  }, [index]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const fail = () => setView({ status: 'failed' });
 
   const meta = [
-    pdf ? `PDF · ${pages} ${pages === 1 ? 'page' : 'pages'}` : 'Image',
+    pdf ? 'PDF' : 'Image',
+    pages && `${pages} ${pages === 1 ? 'page' : 'pages'}`,
     formatSize(file.size),
     previewable.length > 1 && `${pos + 1} of ${previewable.length}`,
   ].filter(Boolean).join(' · ');
+
+  let body;
+  if (view.status === 'loading') {
+    body = <Note>Loading preview…</Note>;
+  } else if (view.status === 'failed') {
+    body = <Note>This file can’t be previewed here. Download it to open it.</Note>;
+  } else if (pdf) {
+    body = (
+      <Suspense fallback={<Note>Loading preview…</Note>}>
+        <PdfPages blob={view.blob} onPages={setPages} onError={fail} />
+      </Suspense>
+    );
+  } else {
+    // Some formats (HEIC) only display in certain browsers; fall back if this one can't.
+    body = <div className="pv-image"><img src={view.url} alt={file.name} onError={fail} /></div>;
+  }
+
+  const download = <><span>Download</span><Icon name="download" invert /></>;
 
   return (
     <div className="dialog-backdrop" onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
@@ -48,11 +81,7 @@ export default function PreviewDialog({ files, index, progress, onNavigate, onDo
           </button>
         </div>
 
-        {pdf ? (
-          <PdfPages count={pages} />
-        ) : (
-          <div className="pv-image"><span className="truncate">image preview · {file.name}</span></div>
-        )}
+        {body}
 
         <div className="dialog-foot">
           {previewable.length > 1 && (
@@ -65,10 +94,11 @@ export default function PreviewDialog({ files, index, progress, onNavigate, onDo
               </button>
             </>
           )}
-          <button className="btn btn-primary pv-dl keep-opacity" disabled={active} onClick={onDownload}>
-            <span>{!active ? 'Download' : progress >= 100 ? 'Complete' : `Downloading ${progress}%`}</span>
-            <Icon name="download" invert />
-          </button>
+          {href ? (
+            <a className="btn btn-primary pv-dl" href={href} download={file.name}>{download}</a>
+          ) : (
+            <button className="btn btn-primary pv-dl" disabled={!view.blob} onClick={() => saveBlob(view.blob, file.name)}>{download}</button>
+          )}
         </div>
       </div>
     </div>

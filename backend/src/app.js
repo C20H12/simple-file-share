@@ -4,11 +4,16 @@ import cors from 'cors';
 import { config } from './config.js';
 import { storage, bucket, ensureBucket } from './storage.js';
 import { createPeerServer } from './peer.js';
-import { sharesRouter } from './routes/shares.js';
+import { uploadRouter } from './routes/upload.js';
+import { receiveRouter } from './routes/receive.js';
 import { loadIndex, startSweeper } from './shares.js';
 
 function createApp(server) {
   const app = express();
+  if (config.trustProxy !== undefined) {
+    const value = config.trustProxy;
+    app.set('trust proxy', /^\d+$/.test(value) ? Number(value) : value === 'true' ? true : value);
+  }
 
   app.use(cors({ origin: config.corsOrigin }));
   app.use(express.json());
@@ -22,7 +27,8 @@ function createApp(server) {
     }
   });
 
-  app.use('/api/shares', sharesRouter);
+  app.use('/api/shares', uploadRouter);
+  app.use('/api/shares', receiveRouter);
   app.use('/api', (_req, res) => res.status(404).json({ error: 'not found' }));
 
   // PeerJS signaling for peer shares: clients connect with
@@ -32,6 +38,7 @@ function createApp(server) {
   app.use((err, _req, res, _next) => {
     const status = err.status ?? err.statusCode ?? 500;
     if (status >= 500) console.error(err);
+    if (err.extra?.retryAfter) res.set('Retry-After', String(err.extra.retryAfter));
     res.status(status).json({ error: status >= 500 ? 'internal error' : err.message, ...err.extra });
   });
 

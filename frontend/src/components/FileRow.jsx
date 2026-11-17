@@ -1,29 +1,40 @@
 import Icon from './Icon.jsx';
-import ProgressBar from './ProgressBar.jsx';
 import { canPreview, extOf, formatSize } from '../lib/format.js';
 
-// One received file. `progress` is undefined when idle, else 0..100.
-export default function FileRow({ file, progress, onPreview, onDownload }) {
-  const active = progress != null;
-  const done = active && progress >= 100;
+const USED = { started: 'Started', done: 'Downloaded' };
+
+// One received file.
+//   href       direct download link; without it the Download button calls onDownload
+//   state      'busy' while the file is being fetched and decrypted, or 'started' /
+//              'done' once a one-time file has been used
+//   onStarted  called after the user follows the direct link
+//   onPreview  leave out to show the name as plain text
+export default function FileRow({ file, href, state, onPreview, onDownload, onStarted }) {
+  let action;
+  if (state === 'busy') {
+    action = <button className="btn btn-secondary file-dl keep-opacity" disabled><Icon name="download" />Downloading</button>;
+  } else if (state) {
+    action = <button className="btn btn-secondary file-dl" disabled><Icon name="check" />{USED[state]}</button>;
+  } else if (href) {
+    // A real link, so the browser streams the file to disk itself. The row is
+    // only updated after the click has gone through.
+    action = <a className="btn btn-secondary file-dl" href={href} download={file.name} onClick={() => setTimeout(onStarted, 0)}><Icon name="download" />Download</a>;
+  } else {
+    action = <button className="btn btn-secondary file-dl" onClick={onDownload}><Icon name="download" />Download</button>;
+  }
+
   return (
     <div className="file-row">
       <div className="file-ext">{extOf(file.name).slice(0, 4)}</div>
       <div style={{ minWidth: 0 }}>
-        {canPreview(file.name) ? (
+        {onPreview && canPreview(file) ? (
           <button className="file-link" onClick={onPreview} title="Preview">{file.name}</button>
         ) : (
           <div className="strong truncate">{file.name}</div>
         )}
-        <div className="k num">
-          {active ? `${formatSize((file.size * progress) / 100)} of ${formatSize(file.size)}` : formatSize(file.size)}
-        </div>
-        {active && <ProgressBar value={progress} />}
+        <div className="k num">{formatSize(file.size)}</div>
       </div>
-      <button className="btn btn-secondary file-dl keep-opacity" disabled={active} onClick={onDownload}>
-        <Icon name={done ? 'check' : 'download'} />
-        {active ? (done ? 'Complete' : `${progress}%`) : 'Download'}
-      </button>
+      {action}
     </div>
   );
 }

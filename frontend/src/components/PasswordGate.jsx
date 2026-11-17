@@ -1,13 +1,24 @@
 import { useState } from 'react';
 import Icon from './Icon.jsx';
 
-// onSubmit(password) resolves to true if the password unlocked the share.
+// onSubmit(password) resolves to null if the share unlocked, otherwise to the
+// message to show.
 export default function PasswordGate({ onSubmit }) {
   const [value, setValue] = useState('');
-  const [error, setError] = useState(false);
+  const [error, setError] = useState('');
+  const [busy, setBusy] = useState(false);
+
   const submit = async () => {
-    if (!(await onSubmit(value))) setError(true);
+    if (busy || !value) return;
+    setBusy(true);
+    const message = await onSubmit(value);
+    // On success the parent replaces this component, so only failure lands here.
+    if (message) {
+      setError(message);
+      setBusy(false);
+    }
   };
+
   return (
     <div className="g">
       <div className="rule" />
@@ -21,14 +32,15 @@ export default function PasswordGate({ onSubmit }) {
             className={`input pw-input${error ? ' error' : ''}`}
             type="password"
             aria-label="Password"
+            autoFocus
             value={value}
-            onChange={(e) => { setValue(e.target.value); setError(false); }}
+            onChange={(e) => { setValue(e.target.value); setError(''); }}
             onKeyDown={(e) => { if (e.key === 'Enter') submit(); }}
           />
-          {error && <div className="pw-error notice">Wrong password. Check with the sender and try again.</div>}
+          {error && <div className="pw-error notice" role="alert">{error}</div>}
         </div>
         <div className="field m4">
-          <button className="btn btn-primary btn-tall" style={{ width: '100%' }} onClick={submit}>
+          <button className="btn btn-primary btn-tall" style={{ width: '100%' }} disabled={busy} onClick={submit}>
             <span>Unlock</span><Icon name="arrow-right" size={24} invert />
           </button>
         </div>

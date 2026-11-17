@@ -17,4 +17,12 @@ export const config = {
     maxBytes: Number(env.MAX_SHARE_BYTES ?? 2 * 1024 ** 3),
     sweepIntervalMs: Number(env.SWEEP_INTERVAL_MS ?? 60_000),
   },
+  limits: {
+    windowMs: Number(env.LIMIT_WINDOW_MS ?? 15 * 60_000),
+    lookupMisses: Number(env.LOOKUP_MAX_MISSES ?? 30),
+    unlockFailures: Number(env.UNLOCK_MAX_FAILURES ?? 10),
+  },
+  // Set when running behind a reverse proxy, so rate limits see the real
+  // client address. Takes the same values as Express's "trust proxy".
+  trustProxy: env.TRUST_PROXY,
 };

@@ -4,6 +4,7 @@ import Icon from './Icon.jsx';
 import ProgressBar from './ProgressBar.jsx';
 import { formatCode, formatSize, summary } from '../lib/format.js';
 import { EXPIRY_OPTIONS, uploadShare } from '../lib/upload.js';
+import { sharePath } from '../lib/router.js';
 
 function FilePicker({ files, onAdd, onRemove }) {
   const inputRef = useRef(null);
@@ -88,7 +89,7 @@ export default function SendDialog({ mode, onClose }) {
     setCopied(id);
   };
 
-  const link = share ? `${window.location.origin}/${share.code}` : '';
+  const link = share ? `${window.location.origin}${sharePath(share.code)}` : '';
 
   const shareLink = () => {
     if (navigator.share) navigator.share({ title: 'Files via Handoff', text: `Code ${formatCode(share.code)}`, url: link }).catch(() => {});

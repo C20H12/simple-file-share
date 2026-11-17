@@ -2,11 +2,13 @@ import { createHash, randomBytes, randomUUID, timingSafeEqual } from 'node:crypt
 import { Transform, pipeline } from 'node:stream';
 import { Router } from 'express';
 import { config } from '../config.js';
+import { HttpError, badRequest as bad } from '../errors.js';
 import { storage, bucket } from '../storage.js';
 import { hashSecret } from '../password.js';
 import {
-  allocateCode, clearProgress, fileKey, getReceived, getShare, saveShare, setReceived, storedSize,
+  allocateCode, clearProgress, fileKey, getReceived, saveShare, setReceived, storedSize,
 } from '../shares.js';
+import { bearerToken, isBase64Bytes, loadShare } from './common.js';
 
 const HOUR = 3600_000;
 const DURATION_HOURS = new Set([1, 24, 7 * 24, 30 * 24]);
@@ -16,18 +18,7 @@ const MAX_CUSTOM_EXPIRY = 365 * 24 * HOUR;
 const GCM_TAG_BYTES = 16;
 const CHUNK_SIZE_RANGE = [64 * 1024, 16 * 1024 * 1024];
 
-class HttpError extends Error {
-  constructor(status, message, extra) {
-    super(message);
-    this.status = status;
-    this.extra = extra;
-  }
-}
-const bad = (message) => new HttpError(400, message);
-
 const sha256 = (value) => createHash('sha256').update(value).digest();
-const isBase64Bytes = (value, bytes) =>
-  typeof value === 'string' && Buffer.from(value, 'base64').length === bytes;
 
 // Password-protected files are encrypted in the browser in fixed-size chunks,
 // each carrying its own AES-GCM tag, so the stored size is larger than the file.
@@ -91,10 +82,8 @@ function parseFiles(files, encryption) {
 
 // Loads the share named in the URL and checks the caller's upload token.
 async function requireUploader(req, _res, next) {
-  const { code } = req.params;
-  const share = /^\d{6}$/.test(code) ? await getShare(code) : null;
-  if (!share) throw new HttpError(404, 'share not found');
-  const token = /^Bearer (.+)$/.exec(req.get('authorization') ?? '')?.[1];
+  const share = await loadShare(req);
+  const token = bearerToken(req);
   if (!token || !timingSafeEqual(sha256(token), Buffer.from(share.uploadTokenHash, 'base64'))) {
     throw new HttpError(401, 'invalid upload token');
   }
@@ -117,11 +106,11 @@ function progressOf(share) {
   };
 }
 
-export const sharesRouter = Router();
+export const uploadRouter = Router();
 
 // Create a share: declare the files, expiry and (optionally) password
 // protection. Returns the 6-digit code and a token for the upload calls.
-sharesRouter.post('/', async (req, res) => {
+uploadRouter.post('/', async (req, res) => {
   const body = req.body ?? {};
   const expiry = parseExpiry(body.expiry);
   const encryption = parseEncryption(body.encryption);
@@ -157,7 +146,7 @@ sharesRouter.post('/', async (req, res) => {
 });
 
 // Upload one file as the raw request body, streamed straight into storage.
-sharesRouter.put('/:code/files/:fileId', requireUploader, async (req, res) => {
+uploadRouter.put('/:code/files/:fileId', requireUploader, async (req, res) => {
   const { share } = req;
   const file = share.files.find((f) => f.id === req.params.fileId);
   if (!file) throw new HttpError(404, 'file not found in this share');
@@ -193,12 +182,12 @@ sharesRouter.put('/:code/files/:fileId', requireUploader, async (req, res) => {
 });
 
 // Bytes the server has received so far, per file and in total.
-sharesRouter.get('/:code/progress', requireUploader, (req, res) => {
+uploadRouter.get('/:code/progress', requireUploader, (req, res) => {
   res.set('Cache-Control', 'no-store').json(progressOf(req.share));
 });
 
 // Finish the share once every file is stored. The expiry clock starts here.
-sharesRouter.post('/:code/complete', requireUploader, async (req, res) => {
+uploadRouter.post('/:code/complete', requireUploader, async (req, res) => {
   const { share } = req;
   if (share.status === 'pending') {
     const sizes = await Promise.all(share.files.map((f) => storedSize(share.code, f.id)));

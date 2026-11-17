@@ -11,7 +11,11 @@ export const extOf = (name) => name.split('.').pop() || '';
 
 export const isImage = (name) => /^(jpe?g|png|gif|webp|heic)$/i.test(extOf(name));
 export const isPdf = (name) => /^pdf$/i.test(extOf(name));
-export const canPreview = (name) => isImage(name) || isPdf(name);
+
+// A preview loads the whole file into the browser's memory, so only images
+// and PDFs up to this size get one. Larger files are download-only.
+export const PREVIEW_MAX_BYTES = 25 * 1024 * 1024;
+export const canPreview = (file) => (isImage(file.name) || isPdf(file.name)) && file.size <= PREVIEW_MAX_BYTES;
 
 // "482913" -> "482 913"
 export const formatCode = (code) => (code.length > 3 ? `${code.slice(0, 3)} ${code.slice(3)}` : code);
