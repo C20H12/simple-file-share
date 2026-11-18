@@ -1,0 +1,96 @@
+# Tests and builds every push and pull request. Pushes to main that pass are
+# deployed to the server: the frontend build is copied over, and the backend
+# is updated and restarted. Deploying needs these repository secrets (Settings
+# > Secrets and variables > Actions); without them the deploy job is skipped.
+#   DEPLOY_KEY          private SSH key whose public half the server accepts
+#   DEPLOY_HOST         server address
+#   DEPLOY_USER         account the app runs as on the server
+#   DEPLOY_KNOWN_HOSTS  output of `ssh-keyscan <server>`, pinning its identity
+name: Build
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: backend/package-lock.json
+      # The tests run against a real MinIO, here a throwaway one with the
+      # placeholder credentials from .env.example.
+      - name: Start MinIO
+        run: |
+          docker run -d -p 9000:9000 \
+            -e MINIO_ROOT_USER=fileshare -e MINIO_ROOT_PASSWORD=change-me-dev-only \
+            cgr.dev/chainguard/minio:latest server /data
+          for i in $(seq 1 30); do curl -sf http://localhost:9000/minio/health/live && exit 0; sleep 1; done
+          exit 1
+      - run: cp .env.example .env
+      - run: npm ci
+      - run: npm test
+
+  frontend:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - run: npm ci
+      - run: npm test
+      - run: npm run build
+      - uses: actions/upload-artifact@v4
+        with:
+          name: frontend-dist
+          path: frontend/dist
+
+  deploy:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: [backend, frontend]
+    runs-on: ubuntu-latest
+    concurrency: deploy
+    env:
+      CONFIGURED: ${{ secrets.DEPLOY_KEY != '' && secrets.DEPLOY_HOST != '' && secrets.DEPLOY_USER != '' && secrets.DEPLOY_KNOWN_HOSTS != '' }}
+      TARGET: ${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}
+    steps:
+      - name: Skip when the deploy secrets are not set
+        if: env.CONFIGURED != 'true'
+        run: echo "::notice::Deploy secrets are not set; skipping the deploy."
+      - uses: actions/download-artifact@v4
+        if: env.CONFIGURED == 'true'
+        with:
+          name: frontend-dist
+          path: dist
+      - name: Set up SSH
+        if: env.CONFIGURED == 'true'
+        run: |
+          mkdir -p ~/.ssh
+          printf '%s\n' "${{ secrets.DEPLOY_KEY }}" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          printf '%s\n' "${{ secrets.DEPLOY_KNOWN_HOSTS }}" > ~/.ssh/known_hosts
+      - name: Upload the frontend build
+        if: env.CONFIGURED == 'true'
+        run: rsync -a --delete dist/ "$TARGET:/srv/handoff/frontend/dist/"
+      - name: Update and restart the backend
+        if: env.CONFIGURED == 'true'
+        run: |
+          ssh "$TARGET" 'set -e
+            cd /srv/handoff
+            git pull --ff-only
+            cd backend
+            npm ci --omit=dev
+            sudo systemctl restart handoff'
