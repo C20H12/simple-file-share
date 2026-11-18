@@ -53,4 +53,12 @@ export default defineConfig({
       '/peer': { target: apiTarget, ws: true },
     },
   },
+  // Vitest (npm test). Tests run in Node; a file that needs a DOM says so with
+  // a `@vitest-environment jsdom` comment.
+  test: {
+    include: ['tests/**/*.test.{js,jsx}'],
+    clearMocks: true,
+    restoreMocks: true,
+    unstubGlobals: true,
+  },
 });
