@@ -1,7 +1,8 @@
 import assert from 'node:assert/strict';
 import { after, before, describe, test } from 'node:test';
-import { IN_ONE_HOUR, encryptionParams, readShareRecord, startTestServer } from './helpers.js';
+import { IN_ONE_HOUR, config, encryptionParams, readShareRecord, startTestServer } from './helpers.js';
 import { verifySecret } from '../src/password.js';
+import { formatBytes } from '../src/routes/upload.js';
 
 let app;
 before(async () => { app = await startTestServer(); });
@@ -159,4 +160,56 @@ test('GET /health reports storage is up', async () => {
   const res = await fetch(`${app.url}/health`);
   assert.equal(res.status, 200);
   assert.deepEqual(await res.json(), { ok: true, storage: 'up' });
+});
+
+describe('share size limit', () => {
+  const { maxBytes } = config.shares;
+  const nonce = Buffer.alloc(8, 3).toString('base64');
+
+  test('is 50 MB by default', () => {
+    assert.equal(maxBytes, 50_000_000);
+  });
+
+  test('accepts files adding up to exactly the limit', async () => {
+    const { status } = await create({
+      files: [{ name: 'a.bin', size: maxBytes - 1000 }, { name: 'b.bin', size: 1000 }],
+      expiry: IN_ONE_HOUR,
+    });
+    assert.equal(status, 201);
+  });
+
+  test('refuses one byte more with 413, saying how much in MB', async () => {
+    const { status, body } = await create({
+      files: [{ name: 'a.bin', size: maxBytes - 1000 }, { name: 'b.bin', size: 1001 }],
+      expiry: IN_ONE_HOUR,
+    });
+    assert.equal(status, 413);
+    assert.equal(body.error, 'these files add up to 50 MB; a share can hold at most 50 MB');
+    assert.equal(body.maxBytes, maxBytes);
+  });
+
+  test('names the total in the right unit', async () => {
+    const { body } = await create({ files: [{ name: 'big.iso', size: 4_700_000_000 }], expiry: IN_ONE_HOUR });
+    assert.equal(body.error, 'these files add up to 4.7 GB; a share can hold at most 50 MB');
+  });
+
+  test('counts the files as picked, not the encryption overhead', async () => {
+    const { status, body } = await create({
+      files: [{ name: 'secret.bin', size: maxBytes, nonce }],
+      expiry: IN_ONE_HOUR,
+      encryption: encryptionParams(),
+    });
+    assert.equal(status, 201);
+    assert.ok(body.files[0].storedSize > maxBytes);
+  });
+});
+
+describe('formatBytes', () => {
+  test('uses decimal units and drops a trailing .0', () => {
+    assert.equal(formatBytes(50_000_000), '50 MB');
+    assert.equal(formatBytes(52_428_800), '52.4 MB');
+    assert.equal(formatBytes(2_147_483_648), '2.1 GB');
+    assert.equal(formatBytes(1500), '1.5 KB');
+    assert.equal(formatBytes(999), '999 bytes');
+  });
 });

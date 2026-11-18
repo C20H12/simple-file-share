@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 import { CHUNK_SIZE, decryptChunk, deriveShareKeys, encryptedSize, fromBase64 } from '../src/lib/crypto.js';
-import { EXPIRY_OPTIONS, uploadShare } from '../src/lib/upload.js';
+import { EXPIRY_OPTIONS, MAX_UPLOAD_BYTES, MAX_UPLOAD_LABEL, uploadShare, uploadTooLarge } from '../src/lib/upload.js';
 import { bytesOf, sameBytes } from './helpers.js';
 
 // The API module is replaced with an in-memory server that records what it is sent.
@@ -165,5 +165,23 @@ describe('progress polling', () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+});
+
+describe('upload size limit', () => {
+  test('is 50 MB, matching the backend', () => {
+    expect(MAX_UPLOAD_BYTES).toBe(50_000_000);
+    expect(MAX_UPLOAD_LABEL).toBe('50 MB');
+  });
+
+  test('allows files adding up to exactly the limit', () => {
+    expect(uploadTooLarge([{ size: MAX_UPLOAD_BYTES - 10 }, { size: 10 }])).toBeNull();
+    expect(uploadTooLarge([])).toBeNull();
+  });
+
+  test('explains an oversize selection in MB and points to peer share', () => {
+    expect(uploadTooLarge([{ size: 40e6 }, { size: 23.2e6 }])).toBe(
+      'These files add up to 63.2 MB. Uploads are limited to 50 MB; use Peer share to send larger files.',
+    );
   });
 });

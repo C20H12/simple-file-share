@@ -3,7 +3,7 @@ import QRCode from 'qrcode';
 import Icon from './Icon.jsx';
 import ProgressBar from './ProgressBar.jsx';
 import { formatCode, formatSize, summary } from '../lib/format.js';
-import { EXPIRY_OPTIONS, uploadShare } from '../lib/upload.js';
+import { EXPIRY_OPTIONS, MAX_UPLOAD_LABEL, uploadShare, uploadTooLarge } from '../lib/upload.js';
 import { hostFiles } from '../lib/peer.js';
 import { sharePath } from '../lib/router.js';
 import { recordUploaded } from '../lib/recents.js';
@@ -137,7 +137,9 @@ export default function SendDialog({ mode, onClose }) {
       setStep('done');
     } catch (err) {
       if (controller.signal.aborted) return;
-      setError(err.message || 'Upload failed.');
+      // The dialog checks the size first; this covers a server set to a lower limit.
+      if (err.status === 413) setError(`These files are too large to upload. Uploads are limited to ${err.data?.maxBytes ? formatSize(err.data.maxBytes) : MAX_UPLOAD_LABEL}.`);
+      else setError(err.message || 'Upload failed.');
     }
   };
 
@@ -159,7 +161,8 @@ export default function SendDialog({ mode, onClose }) {
   };
 
   const needsDate = expiry === 'Custom date' && !customDate;
-  const canContinue = files.length > 0 && (isUpload ? !needsDate : !starting);
+  const tooLarge = isUpload ? uploadTooLarge(files) : null;
+  const canContinue = files.length > 0 && (isUpload ? !needsDate && !tooLarge : !starting);
   const expiryLabel = expiry === 'Custom date' ? customDate : expiry.toLowerCase();
 
   return (
@@ -177,6 +180,7 @@ export default function SendDialog({ mode, onClose }) {
               onAdd={(add) => setFiles((fs) => fs.concat(add))}
               onRemove={(i) => setFiles((fs) => fs.filter((_, j) => j !== i))}
             />
+            {tooLarge && <p className="notice" role="alert">{tooLarge}</p>}
             {isUpload ? (
               <div className="options">
                 <div className="field">

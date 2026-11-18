@@ -1,7 +1,20 @@
 import { completeShare, createShare, getUploadProgress, uploadFile } from './api.js';
 import { CHUNK_SIZE, deriveShareKeys, encryptFile, randomBytes, toBase64 } from './crypto.js';
+import { formatSize } from './format.js';
 
 const POLL_MS = 200;
+
+// Most an uploaded share may hold in total (50 MB). The backend enforces the
+// same limit (MAX_SHARE_BYTES); keep the two in step. Peer shares have none.
+export const MAX_UPLOAD_BYTES = 50 * 1000 ** 2;
+export const MAX_UPLOAD_LABEL = `${MAX_UPLOAD_BYTES / 1000 ** 2} MB`;
+
+// What to tell the sender when `files` are too large to upload, or null.
+export function uploadTooLarge(files) {
+  const total = files.reduce((sum, f) => sum + f.size, 0);
+  if (total <= MAX_UPLOAD_BYTES) return null;
+  return `These files add up to ${formatSize(total)}. Uploads are limited to ${MAX_UPLOAD_LABEL}; use Peer share to send larger files.`;
+}
 
 export const EXPIRY_OPTIONS = ['1 hour', '1 day', '7 days', '30 days', 'After first download', 'Custom date'];
 const EXPIRY_HOURS = { '1 hour': 1, '1 day': 24, '7 days': 168, '30 days': 720 };

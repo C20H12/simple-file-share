@@ -14,7 +14,7 @@ export const config = {
   peerPath: env.PEER_PATH ?? '/peer',
   shares: {
     maxFiles: Number(env.MAX_SHARE_FILES ?? 100),
-    maxBytes: Number(env.MAX_SHARE_BYTES ?? 2 * 1024 ** 3),
+    maxBytes: Number(env.MAX_SHARE_BYTES ?? 50 * 1000 ** 2), // 50 MB, counted as the frontend shows sizes
     sweepIntervalMs: Number(env.SWEEP_INTERVAL_MS ?? 60_000),
   },
   limits: {

@@ -57,6 +57,14 @@ function parseEncryption(encryption) {
   };
 }
 
+// "50 MB", "1.5 GB": decimal units, the way the frontend shows file sizes.
+export function formatBytes(bytes) {
+  for (const [unit, size] of [['GB', 1e9], ['MB', 1e6], ['KB', 1e3]]) {
+    if (bytes >= size) return `${Number((bytes / size).toFixed(1))} ${unit}`;
+  }
+  return `${bytes} bytes`;
+}
+
 function parseFiles(files, encryption) {
   const { maxFiles, maxBytes } = config.shares;
   if (!Array.isArray(files) || files.length === 0) throw bad('files must be a non-empty array');
@@ -75,8 +83,11 @@ function parseFiles(files, encryption) {
       ...(encryption && { nonce }),
     };
   });
-  const total = parsed.reduce((sum, f) => sum + f.storedSize, 0);
-  if (total > maxBytes) throw new HttpError(413, `a share can hold at most ${maxBytes} bytes`);
+  // Counted on the files as picked; encryption adds only 16 bytes per chunk.
+  const total = parsed.reduce((sum, f) => sum + f.size, 0);
+  if (total > maxBytes) {
+    throw new HttpError(413, `these files add up to ${formatBytes(total)}; a share can hold at most ${formatBytes(maxBytes)}`, { maxBytes });
+  }
   return parsed;
 }
 
