@@ -1,7 +1,8 @@
 # Tests and builds every push and pull request. Pushes to main that pass are
 # deployed to the server: the frontend build is copied over, and the backend
-# is updated and restarted. Deploying needs these repository secrets (Settings
-# > Secrets and variables > Actions); without them the deploy job is skipped.
+# is updated and restarted. "Run workflow" on the Actions tab runs it by hand
+# (deploying only from main). Deploying needs these repository secrets
+# (Settings > Secrets and variables > Actions); without them it is skipped.
 #   DEPLOY_KEY          private SSH key whose public half the server accepts
 #   DEPLOY_HOST         server address
 #   DEPLOY_USER         account the app runs as on the server
@@ -11,6 +12,7 @@ name: Build
 on:
   push:
   pull_request:
+  workflow_dispatch:
 
 jobs:
   backend:
@@ -59,7 +61,7 @@ jobs:
           path: frontend/dist
 
   deploy:
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
     needs: [backend, frontend]
     runs-on: ubuntu-latest
     concurrency: deploy
