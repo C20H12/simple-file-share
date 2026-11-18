@@ -2,10 +2,10 @@ import Icon from './Icon.jsx';
 import FileRow from './FileRow.jsx';
 import { countLabel, formatSize, totalSize } from '../lib/format.js';
 
-// The received file list. `downloads` is what useShareDownloads returns.
+// The received file list. `downloads` is what useDownloads returns.
 // Leave out `onPreview` to make the files download-only.
 export default function ShareFiles({ files, expiryText, downloads, onPreview }) {
-  const { states, error, allBusy, allUsed, hrefFor, save, saveAll, markStarted } = downloads;
+  const { states, percents, error, allBusy, allUsed, hrefFor, save, saveAll, markStarted } = downloads;
   return (
     <div className="g">
       <div className="rule" />
@@ -29,6 +29,7 @@ export default function ShareFiles({ files, expiryText, downloads, onPreview }) 
               file={file}
               href={hrefFor(file)}
               state={states[file.id]}
+              percent={percents[file.id]}
               onPreview={onPreview && (() => onPreview(i))}
               onDownload={() => save(file)}
               onStarted={() => markStarted(file)}

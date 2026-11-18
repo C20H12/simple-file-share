@@ -3,11 +3,12 @@ import Icon from '../components/Icon.jsx';
 import PasswordGate from '../components/PasswordGate.jsx';
 import PreviewDialog from '../components/PreviewDialog.jsx';
 import ShareFiles from '../components/ShareFiles.jsx';
-import { getShare, unlockShare } from '../lib/api.js';
+import { fileUrl, getShare, unlockShare } from '../lib/api.js';
 import { deriveShareKeys, fromBase64 } from '../lib/crypto.js';
+import { downloadFile, saveFile } from '../lib/download.js';
 import { formatCode, formatCountdown } from '../lib/format.js';
 import { recordReceived, removeRecent } from '../lib/recents.js';
-import { useShareDownloads } from '../lib/useShareDownloads.js';
+import { useDownloads } from '../lib/useDownloads.js';
 
 const waitText = (err) => {
   const minutes = Math.ceil((err.data?.retryAfter ?? 60) / 60);
@@ -24,11 +25,52 @@ function Message({ title, children }) {
   );
 }
 
-// The unlocked file list, with downloads and previews.
-function SharedFiles({ share, access, onAuthExpired, onExpired }) {
+// The file list with its downloads and previews, for either kind of share.
+function Files({ files, expiryText, downloads, previews = true }) {
   const [preview, setPreview] = useState(null);
+  return (
+    <>
+      <ShareFiles files={files} expiryText={expiryText} downloads={downloads} onPreview={previews ? setPreview : undefined} />
+      {preview != null && (
+        <PreviewDialog
+          files={files}
+          index={preview}
+          load={downloads.load}
+          hrefFor={downloads.hrefFor}
+          onNavigate={setPreview}
+          onClose={() => setPreview(null)}
+        />
+      )}
+    </>
+  );
+}
+
+// ---- Uploaded shares: files stored on the server ---------------------------
+
+function UploadedFiles({ share, access, onAuthExpired, onExpired }) {
   const [now, setNow] = useState(Date.now);
-  const downloads = useShareDownloads({ share, access, onAuthExpired });
+  const { code } = share;
+  // Each file of such a share can be fetched only once, so opening a preview
+  // would use the file up; these shares are download-only.
+  const oneTime = share.burnAfterDownload;
+
+  const downloads = useDownloads({
+    files: share.files,
+    oneTime,
+    // Without a password the browser downloads straight from the server. With
+    // one, only this page holds the key, so files are fetched and decrypted
+    // here, and written to disk as they are decrypted.
+    hrefFor: access ? undefined : (file) => fileUrl(code, file.id),
+    saveFile: (file, { signal }) => saveFile({ code, file, access, signal }),
+    fetchBlob: (file, { signal }) => downloadFile({ code, file, access, signal }),
+    describeError: (err, name) => {
+      if (err.status === 401) { onAuthExpired(); return null; }
+      if (err.status === 404 || err.status === 410) return `${name} is no longer available. It may have expired or already been downloaded.`;
+      if (err.status === 429) return 'Too many attempts. Wait a few minutes and try again.';
+      if (err.name === 'OperationError') return `${name} could not be decrypted.`;
+      return `${name} could not be downloaded. Check your connection and try again.`;
+    },
+  });
 
   const remaining = Date.parse(share.expiresAt) - now;
   useEffect(() => {
@@ -39,29 +81,13 @@ function SharedFiles({ share, access, onAuthExpired, onExpired }) {
     if (remaining <= 0) onExpired();
   }, [remaining <= 0]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Each file of such a share can be fetched only once, so opening a preview
-  // would use the file up; these shares are download-only.
-  const oneTime = share.burnAfterDownload;
-
   return (
-    <>
-      <ShareFiles
-        files={share.files}
-        expiryText={oneTime ? 'Expires after first download' : `Expires in ${formatCountdown(remaining)}`}
-        downloads={downloads}
-        onPreview={oneTime ? undefined : setPreview}
-      />
-      {preview != null && (
-        <PreviewDialog
-          files={share.files}
-          index={preview}
-          load={downloads.load}
-          hrefFor={downloads.hrefFor}
-          onNavigate={setPreview}
-          onClose={() => setPreview(null)}
-        />
-      )}
-    </>
+    <Files
+      files={share.files}
+      expiryText={oneTime ? 'Expires after first download' : `Expires in ${formatCountdown(remaining)}`}
+      downloads={downloads}
+      previews={!oneTime}
+    />
   );
 }
 
@@ -124,7 +150,7 @@ function UploadedShare({ code }) {
     case 'locked':
       return <PasswordGate onSubmit={unlock} />;
     case 'ready':
-      return <SharedFiles share={share} access={access} onAuthExpired={relock} onExpired={gone} />;
+      return <UploadedFiles share={share} access={access} onAuthExpired={relock} onExpired={gone} />;
     case 'missing':
       return <Message title="Not found">Nothing is shared under this code. It may have expired, or the code may be mistyped.</Message>;
     case 'limited':

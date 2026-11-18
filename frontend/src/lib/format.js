@@ -1,5 +1,8 @@
-export const formatSize = (bytes) =>
-  bytes >= 1e6 ? `${(bytes / 1e6).toFixed(1)} MB` : `${Math.max(1, Math.round(bytes / 1e3))} KB`;
+// Anything under a megabyte is shown in whole kilobytes, at least 1 unless the file is empty.
+export const formatSize = (bytes) => {
+  if (bytes >= 1e6) return `${(bytes / 1e6).toFixed(1)} MB`;
+  return bytes === 0 ? '0 KB' : `${Math.max(1, Math.round(bytes / 1e3))} KB`;
+};
 
 export const totalSize = (files) => files.reduce((sum, f) => sum + f.size, 0);
 

@@ -5,14 +5,15 @@ const USED = { started: 'Started', done: 'Downloaded' };
 
 // One received file.
 //   href       direct download link; without it the Download button calls onDownload
-//   state      'busy' while the file is being fetched and decrypted, or 'started' /
+//   state      'busy' while the file is being fetched into memory, or 'started' /
 //              'done' once a one-time file has been used
+//   percent    progress of a busy file, when its source reports any
 //   onStarted  called after the user follows the direct link
 //   onPreview  leave out to show the name as plain text
-export default function FileRow({ file, href, state, onPreview, onDownload, onStarted }) {
+export default function FileRow({ file, href, state, percent, onPreview, onDownload, onStarted }) {
   let action;
   if (state === 'busy') {
-    action = <button className="btn btn-secondary file-dl keep-opacity" disabled><Icon name="download" />Downloading</button>;
+    action = <button className="btn btn-secondary file-dl keep-opacity num" disabled><Icon name="download" />{percent == null ? 'Downloading' : `${percent}%`}</button>;
   } else if (state) {
     action = <button className="btn btn-secondary file-dl" disabled><Icon name="check" />{USED[state]}</button>;
   } else if (href) {
