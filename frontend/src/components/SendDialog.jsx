@@ -4,6 +4,7 @@ import Icon from './Icon.jsx';
 import ProgressBar from './ProgressBar.jsx';
 import { formatCode, formatSize, summary } from '../lib/format.js';
 import { EXPIRY_OPTIONS, uploadShare } from '../lib/upload.js';
+import { hostFiles } from '../lib/peer.js';
 import { sharePath } from '../lib/router.js';
 import { recordUploaded } from '../lib/recents.js';
 import { useCopied } from '../lib/useCopied.js';
@@ -63,6 +64,30 @@ const today = () => {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 };
 
+// What the sender sees for each state of a peer share (see hostFiles).
+const PEER_STATUS = {
+  waiting: ['Waiting for receiver', () => 'Keep this dialog open. Files are sent when the receiver opens the link or enters the code.'],
+  connected: ['Connected', () => 'The receiver can see the files. Each one is sent when they download it.'],
+  transferring: ['Transferring', (percent) => `${percent}% sent, direct to the receiver.`],
+  complete: ['Complete', () => 'All files were received. You can close this dialog.'],
+  lost: ['Connection lost', (percent) => `The receiver dropped off at ${percent}%. Keep this dialog open so they can reconnect and resume.`],
+};
+
+function PeerStatus({ peer, files, onDone }) {
+  const [title, detail] = PEER_STATUS[peer.status];
+  return (
+    <div className="peer-status">
+      <div className="between" style={{ alignItems: 'baseline' }}>
+        <span className="title">{title}</span>
+        <span className="text-muted" style={{ fontSize: 12 }}>{summary(files)}</span>
+      </div>
+      <ProgressBar value={peer.percent} className={peer.status === 'lost' ? 'muted' : ''} />
+      <div>{detail(peer.percent)}</div>
+      {peer.status === 'complete' && <button className="btn btn-primary btn-start" onClick={onDone}>Done</button>}
+    </div>
+  );
+}
+
 // mode: "upload" (stored on the server) or "peer" (direct, browser to browser)
 export default function SendDialog({ mode, onClose }) {
   const isUpload = mode === 'upload';
@@ -73,14 +98,26 @@ export default function SendDialog({ mode, onClose }) {
   const [password, setPassword] = useState('');
   const [progress, setProgress] = useState({ phase: 'uploading', percent: 0 });
   const [error, setError] = useState('');
-  const [share, setShare] = useState(null); // { code, expiresAt, ... } once uploaded
+  const [share, setShare] = useState(null); // { code, ... } once uploaded or hosted
+  const [starting, setStarting] = useState(false);
+  const [peer, setPeer] = useState({ status: 'waiting', percent: 0 });
   const [copied, copy] = useCopied();
   const abortRef = useRef(null);
+  const hostRef = useRef(null);
+  const open = useRef(false);
 
-  // Closing the dialog (or leaving the page) cancels an upload in flight.
-  useEffect(() => () => abortRef.current?.abort(), []);
+  // Closing the dialog cancels an upload in flight and ends a peer share: the
+  // files are only reachable while this dialog is hosting them.
+  useEffect(() => {
+    open.current = true;
+    return () => {
+      open.current = false;
+      abortRef.current?.abort();
+      hostRef.current?.stop();
+    };
+  }, []);
 
-  const link = share ? `${window.location.origin}${sharePath(share.code)}` : '';
+  const link = share ? `${window.location.origin}${sharePath(share.code, isUpload ? 'uploaded' : 'peer')}` : '';
 
   const shareLink = () => {
     if (navigator.share) navigator.share({ title: 'Files via Handoff', text: `Code ${formatCode(share.code)}`, url: link }).catch(() => {});
@@ -104,8 +141,25 @@ export default function SendDialog({ mode, onClose }) {
     }
   };
 
+  // Nothing is read or sent yet: the page keeps the picked File objects and
+  // reads from them only when a receiver asks for a file.
+  const startPeerShare = async () => {
+    setError('');
+    setStarting(true);
+    try {
+      const host = await hostFiles(files, (state) => { if (open.current) setPeer(state); });
+      if (!open.current) { host.stop(); return; }
+      hostRef.current = host;
+      setShare({ code: host.code });
+      setStep('done');
+    } catch {
+      if (open.current) setError('Peer share could not start. Check your connection and try again.');
+    }
+    if (open.current) setStarting(false);
+  };
+
   const needsDate = expiry === 'Custom date' && !customDate;
-  const canContinue = isUpload && files.length > 0 && !needsDate;
+  const canContinue = files.length > 0 && (isUpload ? !needsDate : !starting);
   const expiryLabel = expiry === 'Custom date' ? customDate : expiry.toLowerCase();
 
   return (
@@ -145,10 +199,10 @@ export default function SendDialog({ mode, onClose }) {
             ) : (
               <>
                 <p className="text-muted">Files stay on your device and are sent directly once the receiver connects.</p>
-                <p className="notice">Peer share is not connected yet.</p>
+                {error && <p className="notice" role="alert">{error}</p>}
               </>
             )}
-            <button className="btn btn-primary btn-row" disabled={!canContinue} onClick={upload}>
+            <button className="btn btn-primary btn-row" disabled={!canContinue} onClick={isUpload ? upload : startPeerShare}>
               <span>Continue</span><Icon name="arrow-right" size={18} invert />
             </button>
           </>
@@ -175,7 +229,7 @@ export default function SendDialog({ mode, onClose }) {
         {step === 'done' && (
           <>
             <div className="done">
-              <QrCode value={link} />
+              {isUpload && <QrCode value={link} />}
               <div className="done-fields">
                 <div className="field">
                   <label htmlFor="send-link">Link</label>
@@ -193,13 +247,19 @@ export default function SendDialog({ mode, onClose }) {
                 </div>
               </div>
             </div>
-            <div className="done-meta">Expires: {expiryLabel} · {share.passwordProtected ? 'Password protected' : 'No password'}</div>
-            <div style={{ display: 'flex', gap: 8 }}>
-              <button className="btn btn-primary btn-row" style={{ flex: 1 }} onClick={shareLink}>
-                <span>{copied === 'share' ? 'Link copied' : 'Share…'}</span><Icon name="share-2" size={18} invert />
-              </button>
-              <button className="btn btn-secondary" style={{ padding: '12px 16px' }} onClick={onClose}>Done</button>
-            </div>
+            {isUpload ? (
+              <>
+                <div className="done-meta">Expires: {expiryLabel} · {share.passwordProtected ? 'Password protected' : 'No password'}</div>
+                <div style={{ display: 'flex', gap: 8 }}>
+                  <button className="btn btn-primary btn-row" style={{ flex: 1 }} onClick={shareLink}>
+                    <span>{copied === 'share' ? 'Link copied' : 'Share…'}</span><Icon name="share-2" size={18} invert />
+                  </button>
+                  <button className="btn btn-secondary" style={{ padding: '12px 16px' }} onClick={onClose}>Done</button>
+                </div>
+              </>
+            ) : (
+              <PeerStatus peer={peer} files={files} onDone={onClose} />
+            )}
           </>
         )}
       </div>

@@ -1,12 +1,14 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import Icon from '../components/Icon.jsx';
 import PasswordGate from '../components/PasswordGate.jsx';
+import PeerConnecting from '../components/PeerConnecting.jsx';
 import PreviewDialog from '../components/PreviewDialog.jsx';
 import ShareFiles from '../components/ShareFiles.jsx';
 import { fileUrl, getShare, unlockShare } from '../lib/api.js';
 import { deriveShareKeys, fromBase64 } from '../lib/crypto.js';
 import { downloadFile, saveFile } from '../lib/download.js';
 import { formatCode, formatCountdown } from '../lib/format.js';
+import { connectToHost, discardPartials } from '../lib/peer.js';
 import { recordReceived, removeRecent } from '../lib/recents.js';
 import { useDownloads } from '../lib/useDownloads.js';
 
@@ -15,12 +17,20 @@ const waitText = (err) => {
   return `Try again in ${minutes} ${minutes === 1 ? 'minute' : 'minutes'}.`;
 };
 
-function Message({ title, children }) {
+// A one-line state of the page. `action` is an optional { label, onClick } button.
+function Message({ title, action, children }) {
   return (
     <div className="g">
       <div className="rule" />
       <div className="lab"><h2 className="xl">{title}</h2></div>
-      <div className="con"><p className="m8">{children}</p></div>
+      <div className="con">
+        <p className="m8">{children}</p>
+        {action && (
+          <div className="m8">
+            <button className="btn btn-secondary" onClick={action.onClick}>{action.label}</button>
+          </div>
+        )}
+      </div>
     </div>
   );
 }
@@ -162,6 +172,84 @@ function UploadedShare({ code }) {
   }
 }
 
+// ---- Peer shares: files sent live from the sender's browser ----------------
+
+function PeerFiles({ host }) {
+  const downloads = useDownloads({
+    files: host.files,
+    saveFile: (file, options) => host.save(file, options),
+    describeError: (err, name) => {
+      if (err.kind === 'lost') return null; // the page switches to its "Lost" state
+      if (err.kind === 'refused') return `${name} could not be sent. ${err.message}`;
+      return `${name} could not be downloaded. Try again.`;
+    },
+  });
+  return (
+    <Files
+      files={host.files}
+      expiryText="Live from the sender’s browser. Downloads stop if they close their tab."
+      downloads={downloads}
+      previews={false}
+    />
+  );
+}
+
+// Connects to the sender's browser, fetches the file list, then lists the files.
+function PeerShare({ code, onCancel }) {
+  const [phase, setPhase] = useState('connecting'); // connecting | listing | ready | missing | lost | failed
+  const [host, setHost] = useState(null);
+  const [attempt, setAttempt] = useState(0);
+  // Interrupted downloads, kept across reconnects so they resume. Each may hold
+  // a browser download open, so they are given up when this page is left.
+  const partials = useRef(new Map());
+  useEffect(() => () => discardPartials(partials.current), []);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    const live = () => !controller.signal.aborted;
+    let connected = null;
+    setPhase('connecting');
+    setHost(null);
+    connectToHost(code, {
+      signal: controller.signal,
+      partials: partials.current,
+      onPhase: (next) => { if (live()) setPhase(next); },
+      onLost: () => { if (live()) setPhase('lost'); },
+    })
+      .then((found) => {
+        if (!live()) { found.close(); return; }
+        connected = found;
+        setHost(found);
+        setPhase('ready');
+      })
+      .catch((err) => {
+        if (!live()) return;
+        // With the sender gone for good there is nothing left to resume from.
+        if (err.kind === 'unavailable') discardPartials(partials.current);
+        setPhase(err.kind === 'unavailable' ? 'missing' : 'failed');
+      });
+    return () => {
+      controller.abort();
+      connected?.close();
+    };
+  }, [code, attempt]);
+
+  const retry = { label: 'Reconnect', onClick: () => setAttempt((n) => n + 1) };
+
+  switch (phase) {
+    case 'ready':
+      return <PeerFiles host={host} />;
+    case 'missing':
+      return <Message title="Not found">Nobody is sharing under this code right now. The sender has to keep their page open, and the code may be mistyped.</Message>;
+    case 'lost':
+      return <Message title="Lost" action={retry}>The connection to the sender was lost. They may have closed their page. Downloads that were interrupted resume when you reconnect.</Message>;
+    case 'failed':
+      return <Message title="Error" action={retry}>The sender could not be reached. Check your connection and try again.</Message>;
+    default:
+      return <PeerConnecting phase={phase} onCancel={onCancel} />;
+  }
+}
+
 export default function ReceivePage({ code, kind, onBack }) {
   return (
     <main className="receive">
@@ -172,11 +260,7 @@ export default function ReceivePage({ code, kind, onBack }) {
         <div className="h2c"><div className="k">Code</div><div className="code-value">{formatCode(code)}</div></div>
         <div className="h2c"><div className="k">Shared as</div><div className="strong">{kind === 'peer' ? 'Peer share' : 'Uploaded'}</div></div>
       </div>
-      {kind === 'peer' ? (
-        <Message title="Not yet">Receiving a peer share is not connected yet.</Message>
-      ) : (
-        <UploadedShare code={code} />
-      )}
+      {kind === 'peer' ? <PeerShare code={code} onCancel={onBack} /> : <UploadedShare code={code} />}
     </main>
   );
 }

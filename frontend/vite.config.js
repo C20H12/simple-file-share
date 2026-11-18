@@ -3,8 +3,9 @@ import { fileURLToPath } from 'node:url';
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 
-// The backend (see ../backend) serves the API; proxying keeps it same-origin.
-// Set API_PROXY_TARGET to point the dev server at a backend elsewhere.
+// The backend (see ../backend) serves the API and the PeerJS signaling
+// endpoint; proxying keeps both same-origin. Set API_PROXY_TARGET to point the
+// dev server at a backend elsewhere.
 const apiTarget = process.env.API_PROXY_TARGET ?? 'http://localhost:3000';
 
 // pdf.js fetches these at runtime for PDFs that rely on them: character maps
@@ -41,7 +42,15 @@ function pdfjsAssets() {
 export default defineConfig({
   plugins: [react(), pdfjsAssets()],
   server: {
+    // Listen on IPv4. By default Vite binds "localhost", which on many systems
+    // means the IPv6 loopback only, and Firefox cannot set up a WebRTC
+    // connection (peer share) from a page loaded over IPv6 loopback on a
+    // machine without IPv6 connectivity. http://localhost:5173 still works.
+    host: '127.0.0.1',
     port: 5173,
-    proxy: { '/api': apiTarget },
+    proxy: {
+      '/api': apiTarget,
+      '/peer': { target: apiTarget, ws: true },
+    },
   },
 });
