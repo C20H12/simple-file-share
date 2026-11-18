@@ -32,6 +32,7 @@ page lists recently sent and received codes, kept in the browser only.
 
 ```
 .
+├── .github/workflows/build.yml  CI: tests and builds every push, deploys main
 ├── backend/                     Express API, PeerJS signaling and MinIO storage
 │   ├── docker-compose.yml       MinIO service (S3 API on :9000, console on :9001)
 │   ├── .env.example             configuration; copy to .env
@@ -52,34 +53,32 @@ page lists recently sent and received codes, kept in the browser only.
 │   │       └── common.js        shared request helpers
 │   └── tests/                   API, expiry, rate-limit and signaling tests
 │
-├── frontend/                    React single-page app
-│   ├── index.html
-│   ├── vite.config.js           dev server, API/signaling proxy, pdf.js assets, Vitest config
-│   ├── .env.example             optional settings (API URL, ICE servers, debug)
-│   ├── public/
-│   │   ├── icons/               SVG icons
-│   │   └── stream/sw.js         service worker that streams page-made downloads to disk
-│   ├── src/
-│   │   ├── main.jsx, App.jsx    entry point and top-level routing
-│   │   ├── pages/
-│   │   │   ├── HomePage.jsx     send (upload / peer share), receive by code, recent shares
-│   │   │   └── ReceivePage.jsx  uploaded and peer shares: password, file list, downloads
-│   │   ├── components/          dialogs, file rows, previews, code input, …
-│   │   ├── lib/
-│   │   │   ├── api.js           backend API client
-│   │   │   ├── upload.js        upload flow, with encryption when a password is set
-│   │   │   ├── crypto.js        key derivation and chunked AES-GCM
-│   │   │   ├── download.js      fetching, decrypting and saving files
-│   │   │   ├── fileSink.js      writing a download to disk through the service worker
-│   │   │   ├── peer.js          peer share: hosting files and receiving them over WebRTC
-│   │   │   ├── useDownloads.js  download state for a file list
-│   │   │   ├── recents.js       recently sent/received codes in localStorage
-│   │   │   ├── router.js        minimal History API router
-│   │   │   └── format.js, useCopied.js
-│   │   └── styles/              design system (modernist.css) and app styles
-│   └── tests/                   unit tests; peer share runs against tests/fakePeerjs.js
-│
-└── file-sharing-prototype/      the original HTML design prototype the UI is based on
+└── frontend/                    React single-page app
+    ├── index.html
+    ├── vite.config.js           dev server, API/signaling proxy, pdf.js assets, Vitest config
+    ├── .env.example             optional settings (API URL, ICE servers, debug)
+    ├── public/
+    │   ├── icons/               SVG icons
+    │   └── stream/sw.js         service worker that streams page-made downloads to disk
+    ├── src/
+    │   ├── main.jsx, App.jsx    entry point and top-level routing
+    │   ├── pages/
+    │   │   ├── HomePage.jsx     send (upload / peer share), receive by code, recent shares
+    │   │   └── ReceivePage.jsx  uploaded and peer shares: password, file list, downloads
+    │   ├── components/          dialogs, file rows, previews, code input, …
+    │   ├── lib/
+    │   │   ├── api.js           backend API client
+    │   │   ├── upload.js        upload flow, with encryption when a password is set
+    │   │   ├── crypto.js        key derivation and chunked AES-GCM
+    │   │   ├── download.js      fetching, decrypting and saving files
+    │   │   ├── fileSink.js      writing a download to disk through the service worker
+    │   │   ├── peer.js          peer share: hosting files and receiving them over WebRTC
+    │   │   ├── useDownloads.js  download state for a file list
+    │   │   ├── recents.js       recently sent/received codes in localStorage
+    │   │   ├── router.js        minimal History API router
+    │   │   └── format.js, useCopied.js
+    │   └── styles/              design system (modernist.css) and app styles
+    └── tests/                   unit tests; peer share runs against tests/fakePeerjs.js
 ```
 
 ## Running locally
@@ -128,3 +127,15 @@ The backend has no build step. Serve `frontend/dist` from any web server that
 
 Behind a reverse proxy, set `TRUST_PROXY` in the backend's `.env` so rate
 limits see real client addresses.
+
+## Deployment
+
+[`.github/workflows/build.yml`](.github/workflows/build.yml) runs both test
+suites and builds the frontend on every push and pull request. Pushes to
+`main` that pass are deployed over SSH: the build is copied to
+`/srv/handoff/frontend/dist`, and the backend checkout in `/srv/handoff` is
+pulled, its dependencies reinstalled and its systemd service (`handoff`)
+restarted. On the server, Caddy serves the build, forwards `/api` and `/peer`
+to the backend and provides HTTPS; MinIO runs in Docker. The deploy needs the
+repository secrets `DEPLOY_KEY`, `DEPLOY_HOST`, `DEPLOY_USER` and
+`DEPLOY_KNOWN_HOSTS`, and is skipped until they are set.
