@@ -1,6 +1,7 @@
 import Icon from '../components/Icon.jsx';
 import CodeInput from '../components/CodeInput.jsx';
 import SegmentedControl from '../components/SegmentedControl.jsx';
+import RecentShares from '../components/RecentShares.jsx';
 
 const KINDS = [{ value: 'uploaded', label: 'Uploaded' }, { value: 'peer', label: 'Peer' }];
 
@@ -35,6 +36,8 @@ export default function HomePage({ code, kind, onCodeChange, onKindChange, onUpl
           </button>
         </div>
       </section>
+
+      <RecentShares />
     </main>
   );
 }

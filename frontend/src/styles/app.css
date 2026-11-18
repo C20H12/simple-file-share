@@ -83,6 +83,9 @@ a.btn,a.btn:hover{color:var(--color-text)}a.btn-primary,a.btn-primary:hover{colo
 .file-ext{width:56px;height:56px;background:var(--color-surface);display:grid;place-items:center;font-size:12px;font-weight:800;text-transform:uppercase}
 .file-dl{min-width:136px;justify-content:flex-start;font-variant-numeric:tabular-nums}
 .file-link{display:block;max-width:100%;padding:0;border:0;background:none;font:inherit;font-weight:800;color:var(--color-text);text-align:left;cursor:pointer;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;text-decoration:underline;text-decoration-color:var(--color-divider);text-underline-offset:3px}.file-link:hover{text-decoration-color:var(--color-text)}
+a.file-link:hover{color:var(--color-text)}
+.recent-head{display:flex;flex-wrap:wrap;align-items:baseline;column-gap:12px}
+.recent-link{font-size:12px;font-weight:400}
 
 /* dialogs */
 .dialog-send{width:min(520px,100%)}

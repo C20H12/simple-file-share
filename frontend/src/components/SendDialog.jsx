@@ -5,6 +5,8 @@ import ProgressBar from './ProgressBar.jsx';
 import { formatCode, formatSize, summary } from '../lib/format.js';
 import { EXPIRY_OPTIONS, uploadShare } from '../lib/upload.js';
 import { sharePath } from '../lib/router.js';
+import { recordUploaded } from '../lib/recents.js';
+import { useCopied } from '../lib/useCopied.js';
 
 function FilePicker({ files, onAdd, onRemove }) {
   const inputRef = useRef(null);
@@ -72,22 +74,11 @@ export default function SendDialog({ mode, onClose }) {
   const [progress, setProgress] = useState({ phase: 'uploading', percent: 0 });
   const [error, setError] = useState('');
   const [share, setShare] = useState(null); // { code, expiresAt, ... } once uploaded
-  const [copied, setCopied] = useState('');
+  const [copied, copy] = useCopied();
   const abortRef = useRef(null);
 
   // Closing the dialog (or leaving the page) cancels an upload in flight.
   useEffect(() => () => abortRef.current?.abort(), []);
-
-  useEffect(() => {
-    if (!copied) return;
-    const to = setTimeout(() => setCopied(''), 1600);
-    return () => clearTimeout(to);
-  }, [copied]);
-
-  const copy = (id, text) => {
-    navigator.clipboard?.writeText(text).catch(() => {});
-    setCopied(id);
-  };
 
   const link = share ? `${window.location.origin}${sharePath(share.code)}` : '';
 
@@ -104,6 +95,7 @@ export default function SendDialog({ mode, onClose }) {
     setStep('progress');
     try {
       const result = await uploadShare({ files, expiry, customDate, password, onProgress: setProgress, signal: controller.signal });
+      recordUploaded(result);
       setShare(result);
       setStep('done');
     } catch (err) {

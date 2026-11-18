@@ -6,6 +6,7 @@ import ShareFiles from '../components/ShareFiles.jsx';
 import { getShare, unlockShare } from '../lib/api.js';
 import { deriveShareKeys, fromBase64 } from '../lib/crypto.js';
 import { formatCode, formatCountdown } from '../lib/format.js';
+import { recordReceived, removeRecent } from '../lib/recents.js';
 import { useShareDownloads } from '../lib/useShareDownloads.js';
 
 const waitText = (err) => {
@@ -71,8 +72,14 @@ function UploadedShare({ code }) {
   const [access, setAccess] = useState(null); // { token, key, chunkSize } once unlocked
   const [wait, setWait] = useState('');
 
+  // The code no longer leads anywhere, so it leaves the home page's recent list too.
+  const gone = () => {
+    removeRecent(code);
+    setStatus('missing');
+  };
+
   const fail = (err) => {
-    if (err.status === 404) setStatus('missing');
+    if (err.status === 404) gone();
     else if (err.status === 429) { setWait(waitText(err)); setStatus('limited'); }
     else setStatus('failed');
   };
@@ -81,12 +88,13 @@ function UploadedShare({ code }) {
     const controller = new AbortController();
     getShare(code, controller.signal)
       .then((found) => {
+        recordReceived(found);
         setShare(found);
         setStatus(found.files ? 'ready' : 'locked');
       })
       .catch((err) => { if (!controller.signal.aborted) fail(err); });
     return () => controller.abort();
-  }, [code]);
+  }, [code]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const unlock = async (password) => {
     const { kdf, chunkSize } = share.encryption;
@@ -100,7 +108,7 @@ function UploadedShare({ code }) {
     } catch (err) {
       if (err.status === 401) return 'Wrong password. Check with the sender and try again.';
       if (err.status === 429) return `Too many wrong passwords. ${waitText(err)}`;
-      if (err.status === 404) { setStatus('missing'); return null; }
+      if (err.status === 404) { gone(); return null; }
       return 'The password could not be checked. Check your connection and try again.';
     }
   };
@@ -116,7 +124,7 @@ function UploadedShare({ code }) {
     case 'locked':
       return <PasswordGate onSubmit={unlock} />;
     case 'ready':
-      return <SharedFiles share={share} access={access} onAuthExpired={relock} onExpired={() => setStatus('missing')} />;
+      return <SharedFiles share={share} access={access} onAuthExpired={relock} onExpired={gone} />;
     case 'missing':
       return <Message title="Not found">Nothing is shared under this code. It may have expired, or the code may be mistyped.</Message>;
     case 'limited':
