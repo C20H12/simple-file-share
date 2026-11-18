@@ -8,6 +8,8 @@ vi.mock('../src/lib/peer.js', () => ({ hostFiles: vi.fn() }));
 vi.mock('qrcode', () => ({ default: { toDataURL: vi.fn().mockResolvedValue('') } }));
 
 const { default: SendDialog } = await import('../src/components/SendDialog.jsx');
+const { uploadShare } = await import('../src/lib/upload.js');
+const { ApiError } = await import('../src/lib/api.js');
 
 afterEach(cleanup);
 
@@ -61,5 +63,16 @@ describe('expiry', () => {
     const options = [...select.options].map((o) => o.value);
     expect(options).toContain('12 hours');
     expect(options).not.toContain('30 days');
+  });
+});
+
+describe('when the server is out of storage', () => {
+  test('says so and suggests peer share', async () => {
+    uploadShare.mockRejectedValueOnce(new ApiError(507, 'the server is out of storage space; try again later', { reason: 'storage-full' }));
+    const { container } = render(<SendDialog mode="upload" onClose={vi.fn()} />);
+    pick(container, [1000]);
+    fireEvent.click(continueButton());
+    expect(await screen.findByText(/out of storage space right now/)).toBeTruthy();
+    expect(screen.getByText(/use Peer share, which sends files directly/)).toBeTruthy();
   });
 });

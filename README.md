@@ -4,7 +4,9 @@ A small web app for handing files to someone else, two ways:
 
 - **Upload** — up to 50 MB per share. Files are stored on the server under a
   6-digit code and a link (with a QR code), and expire after the first
-  download (the default), after 1 hour to 7 days, or on a chosen date. An optional password encrypts the files in the
+  download (the default), after 1 hour to 7 days, or on a chosen date. The
+  server holds at most 3 GB of shares in total; when that is used up, new
+  uploads are refused with a "storage full" message until space frees up. An optional password encrypts the files in the
   sender's browser before upload (AES-256-GCM, key derived with PBKDF2); the
   server only ever holds ciphertext and a hash of a password verifier.
 - **Peer share** — no size limit. Files go straight from the sender's browser
@@ -127,6 +129,11 @@ The backend has no build step. Serve `frontend/dist` from any web server that
 
 Behind a reverse proxy, set `TRUST_PROXY` in the backend's `.env` so rate
 limits see real client addresses.
+
+Storage is capped twice: the backend refuses new shares once they would take
+more than `STORAGE_MAX_BYTES` (3 GB), and `npm run minio:quota` (in
+`backend/`) sets a hard quota of `MINIO_BUCKET_QUOTA` (3.5 GB) on the MinIO
+bucket as a backstop. Keep both below the disk's free space.
 
 ## Deployment
 

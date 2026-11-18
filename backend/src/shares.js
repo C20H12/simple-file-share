@@ -12,6 +12,30 @@ export const fileKey = (code, fileId) => `files/${code}/${fileId}`;
 // reading every record; rebuilt from storage on startup.
 const expiryIndex = new Map();
 
+// code -> bytes the share takes in storage (files not yet deleted). Counted
+// from the moment a share is created, so space is set aside before its upload
+// begins; rebuilt from storage on startup.
+const shareBytes = new Map();
+const bytesOf = (meta) => meta.files.reduce((sum, f) => sum + (f.downloadedAt ? 0 : f.storedSize), 0);
+
+// Total bytes all shares take, or will once their uploads finish.
+export const storedBytes = () => {
+  let total = 0;
+  for (const bytes of shareBytes.values()) total += bytes;
+  return total;
+};
+
+// Sets space aside for a new share, if it fits within `limit`. Synchronous, so
+// two requests cannot both take the last of the space. Returns false if not.
+export function reserveSpace(meta, limit) {
+  const bytes = bytesOf(meta);
+  if (storedBytes() + bytes > limit) return false;
+  shareBytes.set(meta.code, bytes);
+  return true;
+}
+
+export const releaseSpace = (code) => shareBytes.delete(code);
+
 // code -> Map(fileId -> bytes received), for uploads in flight.
 const uploadProgress = new Map();
 
@@ -52,7 +76,9 @@ async function readMeta(code) {
 export async function loadIndex() {
   for (const key of await list('meta/')) {
     const meta = await readMeta(key.slice('meta/'.length, -'.json'.length));
-    if (meta) expiryIndex.set(meta.code, Date.parse(meta.expiresAt));
+    if (!meta) continue;
+    expiryIndex.set(meta.code, Date.parse(meta.expiresAt));
+    shareBytes.set(meta.code, bytesOf(meta));
   }
   return expiryIndex.size;
 }
@@ -69,6 +95,7 @@ export async function saveShare(meta) {
     'Content-Type': 'application/json',
   });
   expiryIndex.set(meta.code, Date.parse(meta.expiresAt));
+  shareBytes.set(meta.code, bytesOf(meta));
 }
 
 // Returns the share record, or null if it does not exist or has expired.
@@ -80,6 +107,7 @@ export async function getShare(code) {
 
 export async function deleteShare(code) {
   expiryIndex.delete(code);
+  shareBytes.delete(code);
   uploadProgress.delete(code);
   const keys = await list(`files/${code}/`);
   if (keys.length) await storage.removeObjects(bucket, keys);

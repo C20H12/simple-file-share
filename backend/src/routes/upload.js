@@ -2,11 +2,11 @@ import { createHash, randomBytes, randomUUID, timingSafeEqual } from 'node:crypt
 import { Transform, pipeline } from 'node:stream';
 import { Router } from 'express';
 import { config } from '../config.js';
-import { HttpError, badRequest as bad } from '../errors.js';
+import { HttpError, badRequest as bad, storageFull } from '../errors.js';
 import { storage, bucket } from '../storage.js';
 import { hashSecret } from '../password.js';
 import {
-  allocateCode, clearProgress, fileKey, getReceived, saveShare, setReceived, storedSize,
+  allocateCode, clearProgress, fileKey, getReceived, releaseSpace, reserveSpace, saveShare, setReceived, storedSize,
 } from '../shares.js';
 import { bearerToken, isBase64Bytes, loadShare } from './common.js';
 
@@ -146,7 +146,13 @@ uploadRouter.post('/', async (req, res) => {
     password,
     files,
   };
-  await saveShare(share);
+  if (!reserveSpace(share, config.shares.storageMaxBytes)) throw storageFull();
+  try {
+    await saveShare(share);
+  } catch (err) {
+    releaseSpace(share.code);
+    throw err;
+  }
 
   res.status(201).json({
     code: share.code,

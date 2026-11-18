@@ -15,6 +15,9 @@ export const config = {
   shares: {
     maxFiles: Number(env.MAX_SHARE_FILES ?? 100),
     maxBytes: Number(env.MAX_SHARE_BYTES ?? 50 * 1000 ** 2), // 50 MB, counted as the frontend shows sizes
+    // Most all shares together may take in storage. New shares are refused
+    // once this is reached, before anything is uploaded.
+    storageMaxBytes: Number(env.STORAGE_MAX_BYTES ?? 3 * 1000 ** 3), // 3 GB
     sweepIntervalMs: Number(env.SWEEP_INTERVAL_MS ?? 60_000),
   },
   limits: {

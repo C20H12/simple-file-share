@@ -9,6 +9,9 @@ const POLL_MS = 200;
 export const MAX_UPLOAD_BYTES = 50 * 1000 ** 2;
 export const MAX_UPLOAD_LABEL = `${MAX_UPLOAD_BYTES / 1000 ** 2} MB`;
 
+// Shown when the server refuses an upload because its storage is full.
+export const STORAGE_FULL_MESSAGE = 'The server is out of storage space right now. Try again later, or use Peer share, which sends files directly without storing them.';
+
 // What to tell the sender when `files` are too large to upload, or null.
 export function uploadTooLarge(files) {
   const total = files.reduce((sum, f) => sum + f.size, 0);

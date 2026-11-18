@@ -7,6 +7,7 @@ import { createPeerServer } from './peer.js';
 import { uploadRouter } from './routes/upload.js';
 import { receiveRouter } from './routes/receive.js';
 import { loadIndex, startSweeper } from './shares.js';
+import { isStorageFull, storageFull } from './errors.js';
 
 function createApp(server) {
   const app = express();
@@ -35,11 +36,14 @@ function createApp(server) {
   // new Peer({ host, port, path: config.peerPath }).
   app.use(config.peerPath, createPeerServer(server));
 
-  app.use((err, _req, res, _next) => {
+  app.use((thrown, _req, res, _next) => {
+    // MinIO refusing a write for lack of space reads as "storage full", not a crash.
+    const err = isStorageFull(thrown) ? storageFull() : thrown;
     const status = err.status ?? err.statusCode ?? 500;
-    if (status >= 500) console.error(err);
+    const crashed = status >= 500 && status !== 507; // a bug or outage, not an expected refusal
+    if (crashed) console.error(thrown);
     if (err.extra?.retryAfter) res.set('Retry-After', String(err.extra.retryAfter));
-    res.status(status).json({ error: status >= 500 ? 'internal error' : err.message, ...err.extra });
+    res.status(status).json({ error: crashed ? 'internal error' : err.message, ...err.extra });
   });
 
   return app;

@@ -3,7 +3,7 @@ import QRCode from 'qrcode';
 import Icon from './Icon.jsx';
 import ProgressBar from './ProgressBar.jsx';
 import { formatCode, formatSize, summary } from '../lib/format.js';
-import { DEFAULT_EXPIRY, EXPIRY_OPTIONS, MAX_UPLOAD_LABEL, uploadShare, uploadTooLarge } from '../lib/upload.js';
+import { DEFAULT_EXPIRY, EXPIRY_OPTIONS, MAX_UPLOAD_LABEL, STORAGE_FULL_MESSAGE, uploadShare, uploadTooLarge } from '../lib/upload.js';
 import { hostFiles } from '../lib/peer.js';
 import { sharePath } from '../lib/router.js';
 import { recordUploaded } from '../lib/recents.js';
@@ -137,8 +137,9 @@ export default function SendDialog({ mode, onClose }) {
       setStep('done');
     } catch (err) {
       if (controller.signal.aborted) return;
+      if (err.status === 507) setError(STORAGE_FULL_MESSAGE);
       // The dialog checks the size first; this covers a server set to a lower limit.
-      if (err.status === 413) setError(`These files are too large to upload. Uploads are limited to ${err.data?.maxBytes ? formatSize(err.data.maxBytes) : MAX_UPLOAD_LABEL}.`);
+      else if (err.status === 413) setError(`These files are too large to upload. Uploads are limited to ${err.data?.maxBytes ? formatSize(err.data.maxBytes) : MAX_UPLOAD_LABEL}.`);
       else setError(err.message || 'Upload failed.');
     }
   };

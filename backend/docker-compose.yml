@@ -16,5 +16,17 @@ services:
       - minio-data:/data
     restart: unless-stopped
 
+  # One-off task, not started by `docker compose up`: sets a hard quota on the
+  # shares bucket as a backstop behind the backend's own STORAGE_MAX_BYTES.
+  # Run it with `npm run minio:quota` once the bucket exists (the backend
+  # creates it on first start). Values come from .env.
+  minio-quota:
+    image: cgr.dev/chainguard/minio-client:latest
+    profiles: [tools]
+    network_mode: host
+    environment:
+      MC_HOST_local: http://${MINIO_ROOT_USER}:${MINIO_ROOT_PASSWORD}@127.0.0.1:${MINIO_PORT:-9000}
+    command: [quota, set, "local/${MINIO_BUCKET:-shares}", --size, "${MINIO_BUCKET_QUOTA:-3.5GB}"]
+
 volumes:
   minio-data:
