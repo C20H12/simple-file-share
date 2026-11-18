@@ -16,8 +16,9 @@ export function uploadTooLarge(files) {
   return `These files add up to ${formatSize(total)}. Uploads are limited to ${MAX_UPLOAD_LABEL}; use Peer share to send larger files.`;
 }
 
-export const EXPIRY_OPTIONS = ['1 hour', '1 day', '7 days', '30 days', 'After first download', 'Custom date'];
-const EXPIRY_HOURS = { '1 hour': 1, '1 day': 24, '7 days': 168, '30 days': 720 };
+export const EXPIRY_OPTIONS = ['1 hour', '12 hours', '1 day', '7 days', 'After first download', 'Custom date'];
+export const DEFAULT_EXPIRY = 'After first download';
+const EXPIRY_HOURS = { '1 hour': 1, '12 hours': 12, '1 day': 24, '7 days': 168 };
 
 // Turns the dialog's expiry choice into the API's shape. A custom date runs
 // to the end of that day in the sender's time zone.

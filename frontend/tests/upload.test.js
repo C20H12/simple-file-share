@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 import { CHUNK_SIZE, decryptChunk, deriveShareKeys, encryptedSize, fromBase64 } from '../src/lib/crypto.js';
-import { EXPIRY_OPTIONS, MAX_UPLOAD_BYTES, MAX_UPLOAD_LABEL, uploadShare, uploadTooLarge } from '../src/lib/upload.js';
+import { DEFAULT_EXPIRY, EXPIRY_OPTIONS, MAX_UPLOAD_BYTES, MAX_UPLOAD_LABEL, uploadShare, uploadTooLarge } from '../src/lib/upload.js';
 import { bytesOf, sameBytes } from './helpers.js';
 
 // The API module is replaced with an in-memory server that records what it is sent.
@@ -68,14 +68,15 @@ describe('uploadShare without a password', () => {
 
 describe('expiry', () => {
   test('offers the choices the dialog shows', () => {
-    expect(EXPIRY_OPTIONS).toEqual(['1 hour', '1 day', '7 days', '30 days', 'After first download', 'Custom date']);
+    expect(EXPIRY_OPTIONS).toEqual(['1 hour', '12 hours', '1 day', '7 days', 'After first download', 'Custom date']);
+    expect(DEFAULT_EXPIRY).toBe('After first download');
   });
 
   test.each([
     ['1 hour', { type: 'in', hours: 1 }],
     ['1 day', { type: 'in', hours: 24 }],
+    ['12 hours', { type: 'in', hours: 12 }],
     ['7 days', { type: 'in', hours: 168 }],
-    ['30 days', { type: 'in', hours: 720 }],
     ['After first download', { type: 'first-download' }],
   ])('%s', async (expiry, expected) => {
     await uploadShare({ files: files(), expiry });

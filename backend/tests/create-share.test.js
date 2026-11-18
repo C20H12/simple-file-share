@@ -46,6 +46,7 @@ describe('POST /api/shares', () => {
       'missing expiry': undefined,
       'unknown type': { type: 'never' },
       'duration not offered in the UI': { type: 'in', hours: 5 },
+      '30 days, no longer offered': { type: 'in', hours: 720 },
       'unparseable date': { type: 'date', date: 'tomorrow-ish' },
       'date in the past': { type: 'date', date: '2020-01-01T00:00:00Z' },
       'date more than a year away': { type: 'date', date: new Date(Date.now() + 400 * 864e5).toISOString() },
@@ -57,7 +58,7 @@ describe('POST /api/shares', () => {
     }
 
     test('accepts each offered duration and a future date', async () => {
-      for (const hours of [1, 24, 168, 720]) {
+      for (const hours of [1, 12, 24, 168]) {
         assert.equal((await create({ files: oneFile, expiry: { type: 'in', hours } })).status, 201);
       }
       const date = new Date(Date.now() + 864e5).toISOString();

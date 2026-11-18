@@ -11,7 +11,7 @@ import {
 import { bearerToken, isBase64Bytes, loadShare } from './common.js';
 
 const HOUR = 3600_000;
-const DURATION_HOURS = new Set([1, 24, 7 * 24, 30 * 24]);
+const DURATION_HOURS = new Set([1, 12, 24, 7 * 24]);
 const PENDING_TTL = HOUR; // time allowed to finish uploading
 const FIRST_DOWNLOAD_TTL = 30 * 24 * HOUR; // cap for shares nobody downloads
 const MAX_CUSTOM_EXPIRY = 365 * 24 * HOUR;
@@ -35,7 +35,7 @@ function parseExpiry(expiry) {
     if (at > Date.now() + MAX_CUSTOM_EXPIRY) throw bad('expiry.date is more than a year away');
     return { type: 'date', date: new Date(at).toISOString() };
   }
-  throw bad('expiry must be { type: "in", hours: 1|24|168|720 }, { type: "date", date } or { type: "first-download" }');
+  throw bad('expiry must be { type: "in", hours: 1|12|24|168 }, { type: "date", date } or { type: "first-download" }');
 }
 
 // The browser derives two values from the password: an encryption key, which

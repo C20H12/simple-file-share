@@ -3,7 +3,7 @@ import QRCode from 'qrcode';
 import Icon from './Icon.jsx';
 import ProgressBar from './ProgressBar.jsx';
 import { formatCode, formatSize, summary } from '../lib/format.js';
-import { EXPIRY_OPTIONS, MAX_UPLOAD_LABEL, uploadShare, uploadTooLarge } from '../lib/upload.js';
+import { DEFAULT_EXPIRY, EXPIRY_OPTIONS, MAX_UPLOAD_LABEL, uploadShare, uploadTooLarge } from '../lib/upload.js';
 import { hostFiles } from '../lib/peer.js';
 import { sharePath } from '../lib/router.js';
 import { recordUploaded } from '../lib/recents.js';
@@ -93,7 +93,7 @@ export default function SendDialog({ mode, onClose }) {
   const isUpload = mode === 'upload';
   const [step, setStep] = useState('select'); // select -> progress -> done
   const [files, setFiles] = useState([]); // File objects
-  const [expiry, setExpiry] = useState('7 days');
+  const [expiry, setExpiry] = useState(DEFAULT_EXPIRY);
   const [customDate, setCustomDate] = useState('');
   const [password, setPassword] = useState('');
   const [progress, setProgress] = useState({ phase: 'uploading', percent: 0 });
