@@ -10,7 +10,7 @@
   "scripts": {
     "start": "node --env-file=.env src/index.js",
     "dev": "node --env-file=.env --watch src/index.js",
-    "test": "node --env-file=.env --test --test-force-exit tests/",
+    "test": "node --env-file=.env --test --test-force-exit tests/*.test.js",
     "minio:up": "docker compose up -d minio",
     "minio:down": "docker compose down"
   },
