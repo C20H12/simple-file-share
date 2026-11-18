@@ -31,7 +31,6 @@ export default function PasswordGate({ onSubmit }) {
           <input
             className={`input pw-input${error ? ' error' : ''}`}
             type="password"
-            aria-label="Password"
             autoFocus
             value={value}
             onChange={(e) => { setValue(e.target.value); setError(''); }}
