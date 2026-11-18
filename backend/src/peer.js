@@ -7,12 +7,9 @@ import { ExpressPeerServer } from 'peer';
 const sixDigitCode = () => String(randomInt(0, 1_000_000)).padStart(6, '0');
 
 export function createPeerServer(httpServer) {
-  const peerServer = ExpressPeerServer(httpServer, {
+  return ExpressPeerServer(httpServer, {
     path: '/',
     generateClientId: sixDigitCode,
     allow_discovery: false,
   });
-  peerServer.on('connection', (client) => console.log(`peer connected: ${client.getId()}`));
-  peerServer.on('disconnect', (client) => console.log(`peer disconnected: ${client.getId()}`));
-  return peerServer;
 }

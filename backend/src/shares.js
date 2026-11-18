@@ -151,7 +151,6 @@ export function startSweeper(intervalMs) {
       if (expiresAt > now || activeDownloads.has(code)) continue;
       try {
         await deleteShare(code);
-        console.log(`share ${code} expired, deleted`);
       } catch (err) {
         expiryIndex.set(code, expiresAt); // retry on the next pass
         console.error(`failed to delete expired share ${code}:`, err.message);
