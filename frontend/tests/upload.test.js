@@ -68,7 +68,7 @@ describe('uploadShare without a password', () => {
 
 describe('expiry', () => {
   test('offers the choices the dialog shows', () => {
-    expect(EXPIRY_OPTIONS).toEqual(['1 hour', '12 hours', '1 day', '7 days', 'After first download', 'Custom date']);
+    expect(EXPIRY_OPTIONS).toEqual(['1 hour', '12 hours', '1 day', '7 days', 'After first download']);
     expect(DEFAULT_EXPIRY).toBe('After first download');
   });
 
@@ -83,10 +83,6 @@ describe('expiry', () => {
     expect(server.manifest.expiry).toEqual(expected);
   });
 
-  test('a custom date runs to the end of that day, local time', async () => {
-    await uploadShare({ files: files(), expiry: 'Custom date', customDate: '2030-06-15' });
-    expect(server.manifest.expiry).toEqual({ type: 'date', date: new Date(2030, 5, 15, 23, 59, 59).toISOString() });
-  });
 });
 
 describe('uploadShare with a password', () => {

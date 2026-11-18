@@ -59,11 +59,6 @@ function QrCode({ value }) {
   return <div className="qr" role="img" aria-label="QR code" style={src ? { backgroundImage: `url("${src}")` } : undefined} />;
 }
 
-const today = () => {
-  const d = new Date();
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-};
-
 // What the sender sees for each state of a peer share (see hostFiles).
 const PEER_STATUS = {
   waiting: ['Waiting for receiver', () => 'Keep this dialog open. Files are sent when the receiver opens the link or enters the code.'],
@@ -94,7 +89,6 @@ export default function SendDialog({ mode, onClose }) {
   const [step, setStep] = useState('select'); // select -> progress -> done
   const [files, setFiles] = useState([]); // File objects
   const [expiry, setExpiry] = useState(DEFAULT_EXPIRY);
-  const [customDate, setCustomDate] = useState('');
   const [password, setPassword] = useState('');
   const [progress, setProgress] = useState({ phase: 'uploading', percent: 0 });
   const [error, setError] = useState('');
@@ -131,7 +125,7 @@ export default function SendDialog({ mode, onClose }) {
     setProgress({ phase: 'uploading', percent: 0 });
     setStep('progress');
     try {
-      const result = await uploadShare({ files, expiry, customDate, password, onProgress: setProgress, signal: controller.signal });
+      const result = await uploadShare({ files, expiry, password, onProgress: setProgress, signal: controller.signal });
       recordUploaded(result);
       setShare(result);
       setStep('done');
@@ -161,10 +155,9 @@ export default function SendDialog({ mode, onClose }) {
     if (open.current) setStarting(false);
   };
 
-  const needsDate = expiry === 'Custom date' && !customDate;
   const tooLarge = isUpload ? uploadTooLarge(files) : null;
-  const canContinue = files.length > 0 && (isUpload ? !needsDate && !tooLarge : !starting);
-  const expiryLabel = expiry === 'Custom date' ? customDate : expiry.toLowerCase();
+  const canContinue = files.length > 0 && (isUpload ? !tooLarge : !starting);
+  const expiryLabel = expiry.toLowerCase();
 
   return (
     <div className="dialog-backdrop">
@@ -190,12 +183,6 @@ export default function SendDialog({ mode, onClose }) {
                     {EXPIRY_OPTIONS.map((o) => <option key={o}>{o}</option>)}
                   </select>
                 </div>
-                {expiry === 'Custom date' && (
-                  <div className="field">
-                    <label htmlFor="send-date">Expiry date</label>
-                    <input id="send-date" className="input" type="date" min={today()} value={customDate} onChange={(e) => setCustomDate(e.target.value)} />
-                  </div>
-                )}
                 <div className="field">
                   <label htmlFor="send-password">Password (optional)</label>
                   <input id="send-password" className="input" type="text" placeholder="None" value={password} onChange={(e) => setPassword(e.target.value)} />

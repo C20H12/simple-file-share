@@ -143,11 +143,11 @@ describe('POST /api/shares/:code/complete', () => {
     assert.deepEqual((await progress(share)).body.received, 5);
   });
 
-  test('uses the chosen date as the expiry', async () => {
-    const date = new Date(Date.now() + 3 * 864e5).toISOString();
-    const share = await createShare([{ name: 'a.txt', size: 5 }], { type: 'date', date });
+  test('starts the chosen duration when the upload completes', async () => {
+    const share = await createShare([{ name: 'a.txt', size: 5 }], { type: 'in', hours: 12 });
     await put(share, share.files[0].id, Buffer.from('hello'));
-    assert.equal((await complete(share)).body.expiresAt, date);
+    const { body } = await complete(share);
+    assert.ok(Math.abs(Date.parse(body.expiresAt) - (Date.now() + 12 * 3600e3)) < 5000);
   });
 
   test('keeps a first-download share for at most 30 days', async () => {

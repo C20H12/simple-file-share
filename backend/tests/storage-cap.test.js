@@ -1,7 +1,8 @@
 import assert from 'node:assert/strict';
 import { after, afterEach, before, describe, mock, test } from 'node:test';
-import { IN_ONE_HOUR, config, createReadyShare, download, eventually, objectExists, startTestServer, storage } from './helpers.js';
-import { deleteShare, loadIndex, releaseSpace, storedBytes } from '../src/shares.js';
+import { IN_ONE_HOUR, config, createReadyShare, download, eventually, objectExists, shares, startTestServer, storage } from './helpers.js';
+
+const { deleteShare, loadIndex, releaseSpace, storedBytes } = shares;
 
 // Each test file runs in its own process with its own bucket, so the storage
 // budget here only counts what these tests create. It is set per test.

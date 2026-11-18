@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import http from 'node:http';
 import { after, before, test } from 'node:test';
-import { createReadyShare, eventually, objectExists, sleep, startTestServer } from './helpers.js';
+import { IN_ONE_HOUR, createReadyShare, eventually, expireIn, objectExists, sleep, startTestServer } from './helpers.js';
 
 // helpers.js runs the sweeper every 200 ms for these tests.
 let app;
@@ -9,14 +9,14 @@ before(async () => { app = await startTestServer(); });
 after(() => app.close());
 
 test('an expired share is deleted along with its files', async () => {
-  const date = new Date(Date.now() + 1500).toISOString();
-  const { body: share } = await app.api('/shares', { method: 'POST', json: { files: [{ name: 'a.txt', size: 5 }], expiry: { type: 'date', date } } });
+  const { body: share } = await app.api('/shares', { method: 'POST', json: { files: [{ name: 'a.txt', size: 5 }], expiry: IN_ONE_HOUR } });
   const fileKey = `files/${share.code}/${share.files[0].id}`;
   const token = share.uploadToken;
 
   await app.api(`/shares/${share.code}/files/${share.files[0].id}`, { method: 'PUT', token, body: Buffer.from('hello') });
   assert.equal((await app.api(`/shares/${share.code}/complete`, { method: 'POST', token })).status, 200);
   assert.equal(await objectExists(fileKey), true);
+  await expireIn(share.code, 1500);
 
   await sleep(2500);
 
@@ -29,8 +29,8 @@ test('an expired share is deleted along with its files', async () => {
 test('a download that began before expiry is allowed to finish', async () => {
   // Large enough that the download stays in progress while unread.
   const size = 32 * 1024 * 1024;
-  const expiry = { type: 'date', date: new Date(Date.now() + 4000).toISOString() };
-  const share = await createReadyShare(app, [{ name: 'big.bin', content: Buffer.alloc(size, 7) }], { expiry });
+  const share = await createReadyShare(app, [{ name: 'big.bin', content: Buffer.alloc(size, 7) }]);
+  share.expiresAt = await expireIn(share.code, 4000);
   const fileKey = `files/${share.code}/${share.files[0].id}`;
 
   const res = await new Promise((resolve, reject) => {

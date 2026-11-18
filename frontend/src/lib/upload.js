@@ -19,15 +19,13 @@ export function uploadTooLarge(files) {
   return `These files add up to ${formatSize(total)}. Uploads are limited to ${MAX_UPLOAD_LABEL}; use Peer share to send larger files.`;
 }
 
-export const EXPIRY_OPTIONS = ['1 hour', '12 hours', '1 day', '7 days', 'After first download', 'Custom date'];
+export const EXPIRY_OPTIONS = ['1 hour', '12 hours', '1 day', '7 days', 'After first download'];
 export const DEFAULT_EXPIRY = 'After first download';
 const EXPIRY_HOURS = { '1 hour': 1, '12 hours': 12, '1 day': 24, '7 days': 168 };
 
-// Turns the dialog's expiry choice into the API's shape. A custom date runs
-// to the end of that day in the sender's time zone.
-function toApiExpiry(expiry, customDate) {
+// Turns the dialog's expiry choice into the API's shape.
+function toApiExpiry(expiry) {
   if (expiry === 'After first download') return { type: 'first-download' };
-  if (expiry === 'Custom date') return { type: 'date', date: new Date(`${customDate}T23:59:59`).toISOString() };
   return { type: 'in', hours: EXPIRY_HOURS[expiry] };
 }
 
@@ -35,13 +33,13 @@ function toApiExpiry(expiry, customDate) {
 // With a password, each file is encrypted in the browser before it is sent.
 // onProgress receives { phase: 'encrypting' | 'uploading', percent } where
 // percent is the share of bytes the server has received.
-export async function uploadShare({ files, expiry, customDate, password, onProgress, signal }) {
+export async function uploadShare({ files, expiry, password, onProgress, signal }) {
   const keys = password ? await deriveShareKeys(password) : null;
   const nonces = files.map(() => (keys ? randomBytes(8) : null));
 
   const share = await createShare({
     files: files.map((f, i) => ({ name: f.name, size: f.size, type: f.type, ...(keys && { nonce: toBase64(nonces[i]) }) })),
-    expiry: toApiExpiry(expiry, customDate),
+    expiry: toApiExpiry(expiry),
     ...(keys && { encryption: { kdf: keys.kdf, verifier: keys.verifier, chunkSize: CHUNK_SIZE } }),
   }, signal);
   const { code, uploadToken } = share;

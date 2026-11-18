@@ -14,8 +14,9 @@ process.env.UNLOCK_MAX_FAILURES = '100000';
 const { start } = await import('../src/app.js');
 const { storage, bucket } = await import('../src/storage.js');
 const { config } = await import('../src/config.js');
+const shares = await import('../src/shares.js');
 
-export { storage, bucket, config };
+export { storage, bucket, config, shares };
 
 export const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -52,6 +53,15 @@ export async function readObject(key) {
 export const objectExists = (key) => storage.statObject(bucket, key).then(() => true, () => false);
 
 export const readShareRecord = async (code) => JSON.parse((await readObject(`meta/${code}.json`)).toString());
+
+// Brings a share's expiry forward to `ms` from now, as if it had been made
+// with a lifetime shorter than any the API offers (the shortest is an hour).
+export async function expireIn(code, ms) {
+  const record = await readShareRecord(code);
+  record.expiresAt = new Date(Date.now() + ms).toISOString();
+  await shares.saveShare(record);
+  return record.expiresAt;
+}
 
 export const IN_ONE_HOUR = { type: 'in', hours: 1 };
 

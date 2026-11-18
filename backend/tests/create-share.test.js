@@ -47,9 +47,7 @@ describe('POST /api/shares', () => {
       'unknown type': { type: 'never' },
       'duration not offered in the UI': { type: 'in', hours: 5 },
       '30 days, no longer offered': { type: 'in', hours: 720 },
-      'unparseable date': { type: 'date', date: 'tomorrow-ish' },
-      'date in the past': { type: 'date', date: '2020-01-01T00:00:00Z' },
-      'date more than a year away': { type: 'date', date: new Date(Date.now() + 400 * 864e5).toISOString() },
+      'a date, no longer offered': { type: 'date', date: new Date(Date.now() + 864e5).toISOString() },
     };
     for (const [name, expiry] of Object.entries(cases)) {
       test(`rejects ${name}`, async () => {
@@ -57,12 +55,11 @@ describe('POST /api/shares', () => {
       });
     }
 
-    test('accepts each offered duration and a future date', async () => {
+    test('accepts each offered duration and first download', async () => {
       for (const hours of [1, 12, 24, 168]) {
         assert.equal((await create({ files: oneFile, expiry: { type: 'in', hours } })).status, 201);
       }
-      const date = new Date(Date.now() + 864e5).toISOString();
-      assert.equal((await create({ files: oneFile, expiry: { type: 'date', date } })).status, 201);
+      assert.equal((await create({ files: oneFile, expiry: { type: 'first-download' } })).status, 201);
     });
   });
 

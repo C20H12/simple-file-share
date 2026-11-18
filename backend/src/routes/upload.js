@@ -14,7 +14,6 @@ const HOUR = 3600_000;
 const DURATION_HOURS = new Set([1, 12, 24, 7 * 24]);
 const PENDING_TTL = HOUR; // time allowed to finish uploading
 const FIRST_DOWNLOAD_TTL = 30 * 24 * HOUR; // cap for shares nobody downloads
-const MAX_CUSTOM_EXPIRY = 365 * 24 * HOUR;
 const GCM_TAG_BYTES = 16;
 const CHUNK_SIZE_RANGE = [64 * 1024, 16 * 1024 * 1024];
 
@@ -28,14 +27,7 @@ const encryptedSize = (size, chunkSize) =>
 function parseExpiry(expiry) {
   if (expiry?.type === 'in' && DURATION_HOURS.has(expiry.hours)) return { type: 'in', hours: expiry.hours };
   if (expiry?.type === 'first-download') return { type: 'first-download' };
-  if (expiry?.type === 'date') {
-    const at = Date.parse(expiry.date);
-    if (Number.isNaN(at)) throw bad('expiry.date is not a valid date');
-    if (at <= Date.now()) throw bad('expiry.date must be in the future');
-    if (at > Date.now() + MAX_CUSTOM_EXPIRY) throw bad('expiry.date is more than a year away');
-    return { type: 'date', date: new Date(at).toISOString() };
-  }
-  throw bad('expiry must be { type: "in", hours: 1|12|24|168 }, { type: "date", date } or { type: "first-download" }');
+  throw bad('expiry must be { type: "in", hours: 1|12|24|168 } or { type: "first-download" }');
 }
 
 // The browser derives two values from the password: an encryption key, which
@@ -213,8 +205,7 @@ uploadRouter.post('/:code/complete', requireUploader, async (req, res) => {
 
     const now = Date.now();
     const { expiry } = share;
-    const expiresAt = expiry.type === 'date' ? Date.parse(expiry.date)
-      : now + (expiry.type === 'in' ? expiry.hours * HOUR : FIRST_DOWNLOAD_TTL);
+    const expiresAt = now + (expiry.type === 'in' ? expiry.hours * HOUR : FIRST_DOWNLOAD_TTL);
     share.status = 'ready';
     share.completedAt = new Date(now).toISOString();
     share.expiresAt = new Date(expiresAt).toISOString();

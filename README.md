@@ -4,7 +4,7 @@ A small web app for handing files to someone else, two ways:
 
 - **Upload** — up to 50 MB per share. Files are stored on the server under a
   6-digit code and a link (with a QR code), and expire after the first
-  download (the default), after 1 hour to 7 days, or on a chosen date. The
+  download (the default) or after 1 hour, 12 hours, 1 day or 7 days. The
   server holds at most 3 GB of shares in total; when that is used up, new
   uploads are refused with a "storage full" message until space frees up. An optional password encrypts the files in the
   sender's browser before upload (AES-256-GCM, key derived with PBKDF2); the

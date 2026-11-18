@@ -56,13 +56,12 @@ describe('upload size limit in the send dialog', () => {
 });
 
 describe('expiry', () => {
-  test('defaults to after first download, and offers 12 hours but not 30 days', () => {
+  test('defaults to after first download, and offers fixed durations only', () => {
     render(<SendDialog mode="upload" onClose={vi.fn()} />);
     const select = screen.getByLabelText('Expires');
     expect(select.value).toBe('After first download');
-    const options = [...select.options].map((o) => o.value);
-    expect(options).toContain('12 hours');
-    expect(options).not.toContain('30 days');
+    expect([...select.options].map((o) => o.value)).toEqual(['1 hour', '12 hours', '1 day', '7 days', 'After first download']);
+    expect(screen.queryByLabelText('Expiry date')).toBeNull();
   });
 });
 
