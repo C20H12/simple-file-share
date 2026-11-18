@@ -20,8 +20,9 @@
 //   { type: 'cancel', req }           ->   (the sender stops and answers with an error)
 //
 // A connection carries one transfer at a time; further requests wait their
-// turn. `offset` lets a receiver that lost the connection resume a file
-// instead of starting over. The acknowledgements keep the sender within a
+// turn. `offset` asks for the file from that byte on; this receiver always
+// asks from 0, since a download cut off by a lost connection is stopped
+// rather than left open to resume. The acknowledgements keep the sender within a
 // fixed distance of what the receiver has actually stored, so a receiver whose
 // disk is slower than the network is never flooded.
 import { blobType, saveBlob } from './download.js';
@@ -335,13 +336,6 @@ const diskTarget = (sink) => ({
   discard: () => sink.abort(),
 });
 
-// Gives up every interrupted download in `partials`. Call it when they can no
-// longer be resumed: the receive page is being left, or the sender is gone.
-export function discardPartials(partials) {
-  for (const partial of partials.values()) partial.discard();
-  partials.clear();
-}
-
 const abortError = () => new DOMException('Aborted', 'AbortError');
 
 // Connects to the sender hosting `code` and fetches its file list.
@@ -349,15 +343,12 @@ const abortError = () => new DOMException('Aborted', 'AbortError');
 //   signal    aborting it abandons the attempt
 //   onPhase   called with 'listing' once connected, while the list is fetched
 //   onLost    called if the connection drops after this has resolved
-//   partials  a Map kept by the caller; pass the same one when reconnecting
-//             so interrupted downloads resume where they stopped, and hand it
-//             to discardPartials when done with it
 //
 // Resolves with { files, save, close }.
 //   save(file, { onProgress, signal })  saves the file, writing it to disk as it
 //                                       arrives where the browser allows;
 //                                       onProgress receives the bytes so far
-export async function connectToHost(code, { signal, onPhase, onLost, partials = new Map() } = {}) {
+export async function connectToHost(code, { signal, onPhase, onLost } = {}) {
   const { Peer } = await import('peerjs');
   const options = peerOptions();
   // Abandoned before it began (for example the page was left straight away):
@@ -400,31 +391,28 @@ export async function connectToHost(code, { signal, onPhase, onLost, partials = 
 
   // Receives one file, written to disk as it arrives where the browser allows.
   // Resolves with nothing in that case, otherwise with the file as a Blob.
+  // If the connection ends part-way (dropped, or the page is left), the
+  // download is stopped and what was written is discarded, rather than left
+  // open in the browser waiting for data that will not come.
   const receive = (file, { onProgress, signal: stopSignal } = {}) => {
     const run = async () => {
       if (ended) throw lostError();
       if (stopSignal?.aborted) throw abortError();
 
-      // What arrived before an earlier interruption is kept and built on: for
-      // a file going to disk, that is the same browser download, still open.
-      const key = file.id;
-      let partial = partials.get(key);
-      if (!partial) {
-        partial = {
-          target: null, // opened when the sender starts sending
-          discarded: false,
-          batch: new Uint8Array(BATCH_BYTES), // frames gathered so far towards the next piece
-          filled: 0,
-          received: 0, // bytes that have arrived from the sender
-          written: 0, // bytes the target has accepted
-          chain: Promise.resolve(), // opening the target, then its writes, in order
-          discard() {
-            this.discarded = true;
-            this.target?.discard();
-          },
-        };
-        partials.set(key, partial);
-      }
+      const partial = {
+        target: null, // opened when the sender starts sending
+        opening: false,
+        discarded: false,
+        batch: new Uint8Array(BATCH_BYTES), // frames gathered so far towards the next piece
+        filled: 0,
+        received: 0, // bytes that have arrived from the sender
+        written: 0, // bytes the target has accepted
+        chain: Promise.resolve(), // opening the target, then its writes, in order
+        discard() {
+          this.discarded = true;
+          this.target?.discard();
+        },
+      };
       // The browser download is begun only once the sender confirms it can
       // send the file, so a refused request leaves nothing behind.
       const openTarget = () => {
@@ -455,11 +443,10 @@ export async function connectToHost(code, { signal, onPhase, onLost, partials = 
           if (current?.req === req) current = null;
           settler(value);
         };
-        // Gives this file up for good.
+        // Gives this file up, telling the sender to stop.
         const drop = (err) => {
           if (current?.req !== req) return;
           say(conn, { type: 'cancel', req });
-          partials.delete(key);
           partial.discard();
           settle(reject, err);
         };
@@ -510,16 +497,16 @@ export async function connectToHost(code, { signal, onPhase, onLost, partials = 
               partial.filled = 0;
             }
             clearTimeout(stall); // the sender is done; only storing remains
-            partial.chain.then(() => partial.target.finish()).then((result) => {
-              partials.delete(key);
-              settle(resolve, result);
-            }, drop);
+            partial.chain.then(() => partial.target.finish()).then((result) => settle(resolve, result), drop);
           },
           onError(message) { drop(new PeerError('refused', message)); },
-          // The connection dropped: keep `partial` so a later attempt can resume.
-          fail(err) { settle(reject, err); },
+          // The connection ended: stop the browser download and discard it.
+          fail(err) {
+            partial.discard();
+            settle(reject, err);
+          },
         };
-        say(conn, { type: 'get', req, id: file.id, offset: partial.received });
+        say(conn, { type: 'get', req, id: file.id, offset: 0 });
         watch();
       });
     };

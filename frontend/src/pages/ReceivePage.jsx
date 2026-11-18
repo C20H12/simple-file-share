@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import Icon from '../components/Icon.jsx';
 import PasswordGate from '../components/PasswordGate.jsx';
 import PeerConnecting from '../components/PeerConnecting.jsx';
@@ -8,7 +8,7 @@ import { fileUrl, getShare, unlockShare } from '../lib/api.js';
 import { deriveShareKeys, fromBase64 } from '../lib/crypto.js';
 import { downloadFile, saveFile } from '../lib/download.js';
 import { formatCode, formatCountdown } from '../lib/format.js';
-import { connectToHost, discardPartials } from '../lib/peer.js';
+import { connectToHost } from '../lib/peer.js';
 import { recordReceived, removeRecent } from '../lib/recents.js';
 import { useDownloads } from '../lib/useDownloads.js';
 
@@ -199,11 +199,6 @@ function PeerShare({ code, onCancel }) {
   const [phase, setPhase] = useState('connecting'); // connecting | listing | ready | missing | lost | failed
   const [host, setHost] = useState(null);
   const [attempt, setAttempt] = useState(0);
-  // Interrupted downloads, kept across reconnects so they resume. Each may hold
-  // a browser download open, so they are given up when this page is left.
-  const partials = useRef(new Map());
-  useEffect(() => () => discardPartials(partials.current), []);
-
   useEffect(() => {
     const controller = new AbortController();
     const live = () => !controller.signal.aborted;
@@ -212,7 +207,6 @@ function PeerShare({ code, onCancel }) {
     setHost(null);
     connectToHost(code, {
       signal: controller.signal,
-      partials: partials.current,
       onPhase: (next) => { if (live()) setPhase(next); },
       onLost: () => { if (live()) setPhase('lost'); },
     })
@@ -224,8 +218,6 @@ function PeerShare({ code, onCancel }) {
       })
       .catch((err) => {
         if (!live()) return;
-        // With the sender gone for good there is nothing left to resume from.
-        if (err.kind === 'unavailable') discardPartials(partials.current);
         setPhase(err.kind === 'unavailable' ? 'missing' : 'failed');
       });
     return () => {
@@ -242,7 +234,7 @@ function PeerShare({ code, onCancel }) {
     case 'missing':
       return <Message title="Not found">Nobody is sharing under this code right now. The sender has to keep their page open, and the code may be mistyped.</Message>;
     case 'lost':
-      return <Message title="Lost" action={retry}>The connection to the sender was lost. They may have closed their page. Downloads that were interrupted resume when you reconnect.</Message>;
+      return <Message title="Lost" action={retry}>The connection to the sender was lost. They may have closed their page. Any download in progress was stopped; reconnect to download it again.</Message>;
     case 'failed':
       return <Message title="Error" action={retry}>The sender could not be reached. Check your connection and try again.</Message>;
     default:

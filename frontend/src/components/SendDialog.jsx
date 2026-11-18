@@ -70,7 +70,7 @@ const PEER_STATUS = {
   connected: ['Connected', () => 'The receiver can see the files. Each one is sent when they download it.'],
   transferring: ['Transferring', (percent) => `${percent}% sent, direct to the receiver.`],
   complete: ['Complete', () => 'All files were received. You can close this dialog.'],
-  lost: ['Connection lost', (percent) => `The receiver dropped off at ${percent}%. Keep this dialog open so they can reconnect and resume.`],
+  lost: ['Connection lost', (percent) => `The receiver dropped off at ${percent}%. Keep this dialog open so they can reconnect and download again.`],
 };
 
 function PeerStatus({ peer, files, onDone }) {

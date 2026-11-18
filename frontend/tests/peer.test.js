@@ -11,7 +11,7 @@ vi.mock('../src/lib/download.js', async (importOriginal) => ({ ...(await importO
 
 const { openFileSink } = await import('../src/lib/fileSink.js');
 const { saveBlob } = await import('../src/lib/download.js');
-const { PeerError, connectToHost, discardPartials, hostFiles } = await import('../src/lib/peer.js');
+const { PeerError, connectToHost, hostFiles } = await import('../src/lib/peer.js');
 
 const MiB = 1024 * 1024;
 
@@ -234,8 +234,7 @@ describe('refusals and failures', () => {
 
   test('cancelling a download tells the sender to stop and abandons the file', async () => {
     const shared = await host([file('big.bin', pattern(8 * MiB))]);
-    const partials = new Map();
-    const found = await connect(shared.code, { partials });
+    const found = await connect(shared.code);
     const fromSender = trackSenderMessages();
     const controller = new AbortController();
     const saving = found.save(found.files[0], { signal: controller.signal, onProgress: (n) => { if (n > MiB) controller.abort(); } });
@@ -243,7 +242,6 @@ describe('refusals and failures', () => {
     expect(receiverMessages()).toContainEqual({ type: 'cancel', req: 1 });
     await until(() => fromSender.some((m) => m.type === 'error' && m.req === 1));
     expect(sinks[0].aborted).toBe(true);
-    expect(partials.size).toBe(0);
   });
 
   test('the user cancelling the browser download cancels the transfer', async () => {
@@ -271,49 +269,51 @@ describe('dropped connections', () => {
     };
   }
 
-  test('a drop mid-file is reported, and reconnecting resumes the same download where it stopped', async () => {
-    const bytes = pattern(5 * MiB + 321);
-    const shared = await host([file('big.bin', bytes)]);
-    const partials = new Map();
+  test('a drop mid-file stops the browser download and discards what was written', async () => {
+    const shared = await host([file('big.bin', pattern(5 * MiB + 321))]);
     const onLost = vi.fn();
-    const first = await connect(shared.code, { partials, onLost });
+    const found = await connect(shared.code, { onLost });
     dropAfter(2.5 * MiB);
 
-    const err = await first.save(first.files[0]).catch((e) => e);
+    const err = await found.save(found.files[0]).catch((e) => e);
+    expect(err).toBeInstanceOf(PeerError);
     expect(err.kind).toBe('lost');
     expect(onLost).toHaveBeenCalledTimes(1);
+    await until(() => sinks[0].aborted);
+    expect(sinks[0].closed).toBe(false);
     await until(() => shared.last().status === 'lost');
     expect(shared.last().percent).toBeGreaterThan(0);
-    // What arrived is kept, and the browser download is still open.
-    expect(partials.size).toBe(1);
-    expect(sinks[0].closed).toBe(false);
-    expect(sinks[0].aborted).toBe(false);
+  });
+
+  test('after reconnecting, the file downloads again from the start as a new download', async () => {
+    const bytes = pattern(5 * MiB + 321);
+    const shared = await host([file('big.bin', bytes)]);
+    const first = await connect(shared.code);
+    dropAfter(2.5 * MiB);
+    await expect(first.save(first.files[0])).rejects.toMatchObject({ kind: 'lost' });
 
     network.onSend = null;
-    const second = await connect(shared.code, { partials });
+    const second = await connect(shared.code);
     await second.save(second.files[0]);
 
     const gets = receiverMessages().filter((m) => m.type === 'get');
-    expect(gets).toHaveLength(2);
-    expect(gets[1].offset).toBeGreaterThanOrEqual(2 * MiB);
-    expect(gets[1].offset).toBeLessThan(bytes.length);
-    expect(openFileSink).toHaveBeenCalledTimes(1); // the same download carried on
-    expect(sameBytes(sinks[0].bytes(), bytes)).toBe(true);
-    expect(sinks[0].closed).toBe(true);
-    expect(partials.size).toBe(0);
+    expect(gets.map((m) => m.offset)).toEqual([0, 0]);
+    expect(openFileSink).toHaveBeenCalledTimes(2);
+    expect(sinks[0].aborted).toBe(true);
+    expect(sameBytes(sinks[1].bytes(), bytes)).toBe(true);
+    expect(sinks[1].closed).toBe(true);
     await until(() => shared.last().status === 'complete');
   });
 
-  test('discardPartials gives up interrupted downloads', async () => {
-    const shared = await host([file('big.bin', pattern(3 * MiB))]);
-    const partials = new Map();
-    const found = await connect(shared.code, { partials });
-    dropAfter(1.5 * MiB);
-    await found.save(found.files[0]).catch(() => {});
-    expect(partials.size).toBe(1);
-    discardPartials(partials);
-    expect(partials.size).toBe(0);
+  test('leaving the page mid-download stops the browser download too', async () => {
+    const shared = await host([file('big.bin', pattern(4 * MiB))]);
+    const onLost = vi.fn();
+    const found = await connect(shared.code, { onLost });
+    const saving = found.save(found.files[0], { onProgress: (n) => { if (n > MiB) found.close(); } });
+    await expect(saving).rejects.toMatchObject({ kind: 'lost' });
     await until(() => sinks[0].aborted);
+    expect(sinks[0].closed).toBe(false);
+    expect(onLost).not.toHaveBeenCalled(); // closed on purpose, not lost
   });
 
   test('saving after the connection is gone fails at once as lost', async () => {
@@ -481,6 +481,7 @@ describe('checking what the other side sends', () => {
       await vi.advanceTimersByTimeAsync(2_000);
       expect((await saving).kind).toBe('lost');
       expect(onLost).toHaveBeenCalledTimes(1);
+      expect(sinks[0].aborted).toBe(true); // the stuck download is stopped
     } finally {
       vi.useRealTimers();
     }
