@@ -1,5 +1,6 @@
 import { randomInt } from 'node:crypto';
 import { text } from 'node:stream/consumers';
+import { config } from './config.js';
 import { storage, bucket } from './storage.js';
 
 // Share metadata lives next to the files in MinIO, so there is no database:
@@ -39,8 +40,10 @@ export const releaseSpace = (code) => shareBytes.delete(code);
 // code -> Map(fileId -> bytes received), for uploads in flight.
 const uploadProgress = new Map();
 
-// code -> number of downloads being streamed. The sweeper leaves these shares
-// alone so a download that began before expiry can finish.
+// code -> Set of functions that each cut off one download being streamed. The
+// sweeper leaves these shares alone after they expire, so a download that
+// began in time can finish, but only for the grace period; after that it cuts
+// them off and deletes the share anyway.
 const activeDownloads = new Map();
 
 // "code/fileId" for one-time files that someone is downloading right now.
@@ -123,13 +126,17 @@ export async function storedSize(code, fileId) {
   }
 }
 
-// Marks a download as running; call the returned function when it ends.
-export function beginDownload(code) {
-  activeDownloads.set(code, (activeDownloads.get(code) ?? 0) + 1);
+// Marks a download as running. `cutOff` stops it; the sweeper calls it if the
+// share has been expired longer than the grace period. Call the returned
+// function when the download ends.
+export function beginDownload(code, cutOff) {
+  if (!activeDownloads.has(code)) activeDownloads.set(code, new Set());
+  const running = activeDownloads.get(code);
+  const entry = () => cutOff();
+  running.add(entry);
   return () => {
-    const left = activeDownloads.get(code) - 1;
-    if (left > 0) activeDownloads.set(code, left);
-    else activeDownloads.delete(code);
+    running.delete(entry);
+    if (!running.size && activeDownloads.get(code) === running) activeDownloads.delete(code);
   };
 }
 
@@ -171,12 +178,19 @@ export function setReceived(code, fileId, bytes) {
 export const getReceived = (code, fileId) => uploadProgress.get(code)?.get(fileId) ?? 0;
 export const clearProgress = (code) => uploadProgress.delete(code);
 
-// Deletes expired shares, including uploads that were never completed.
+// Deletes expired shares, including uploads that were never completed. A
+// share with downloads still running is kept until they end, or until it has
+// been expired for config.shares.downloadGraceMs, when they are cut off.
 export function startSweeper(intervalMs) {
   const sweep = async () => {
     const now = Date.now();
     for (const [code, expiresAt] of expiryIndex) {
-      if (expiresAt > now || activeDownloads.has(code)) continue;
+      if (expiresAt > now) continue;
+      const running = activeDownloads.get(code);
+      if (running?.size) {
+        if (now < expiresAt + config.shares.downloadGraceMs) continue;
+        for (const cutOff of running) cutOff();
+      }
       try {
         await deleteShare(code);
       } catch (err) {

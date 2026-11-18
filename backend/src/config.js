@@ -19,6 +19,9 @@ export const config = {
     // once this is reached, before anything is uploaded.
     storageMaxBytes: Number(env.STORAGE_MAX_BYTES ?? 3 * 1000 ** 3), // 3 GB
     sweepIntervalMs: Number(env.SWEEP_INTERVAL_MS ?? 60_000),
+    // How long a download that began before its share expired may keep going
+    // afterwards. Past this, it is cut off and the share deleted.
+    downloadGraceMs: Number(env.DOWNLOAD_GRACE_MS ?? 60 * 60_000), // 1 hour
   },
   limits: {
     windowMs: Number(env.LIMIT_WINDOW_MS ?? 15 * 60_000),

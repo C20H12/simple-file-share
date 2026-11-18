@@ -68,7 +68,8 @@ receiveRouter.get('/:code/files/:fileId', async (req, res) => {
   // A share that expires after its first download hands each file out once.
   const oneTime = share.burnAfterDownload;
   if (oneTime && !claimFile(code, fileId)) throw new HttpError(409, 'this file is being downloaded');
-  const endDownload = beginDownload(code);
+  // If the share expires mid-download, the sweeper may cut this off (see shares.js).
+  const endDownload = beginDownload(code, () => res.destroy());
 
   try {
     // With the claim held, read the record again: an earlier download of this
