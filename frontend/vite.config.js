@@ -2,11 +2,19 @@ import { createReadStream, readdirSync, readFileSync, statSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
+import basicSsl from '@vitejs/plugin-basic-ssl';
 
 // The backend (see ../backend) serves the API and the PeerJS signaling
 // endpoint; proxying keeps both same-origin. Set API_PROXY_TARGET to point the
 // dev server at a backend elsewhere.
 const apiTarget = process.env.API_PROXY_TARGET ?? 'http://localhost:3000';
+
+// DEV_HTTPS=1 serves the dev server over HTTPS with a self-signed certificate
+// (the browser warns once; accept it). Needed when testing from another
+// machine: over plain http to anything but localhost, browsers withhold what
+// password-protected shares (Web Crypto), peer share and streaming downloads
+// rely on.
+const https = process.env.DEV_HTTPS === '1';
 
 // pdf.js fetches these at runtime for PDFs that rely on them: character maps
 // (CJK text), the standard fonts, image decoders and colour profiles. This
@@ -40,13 +48,14 @@ function pdfjsAssets() {
 }
 
 export default defineConfig({
-  plugins: [react(), pdfjsAssets()],
+  plugins: [react(), pdfjsAssets(), ...(https ? [basicSsl()] : [])],
   server: {
-    // Listen on IPv4. By default Vite binds "localhost", which on many systems
-    // means the IPv6 loopback only, and Firefox cannot set up a WebRTC
-    // connection (peer share) from a page loaded over IPv6 loopback on a
-    // machine without IPv6 connectivity. http://localhost:5173 still works.
-    host: '127.0.0.1',
+    // Every IPv4 interface, so other machines on the network can connect
+    // (http://<this machine's address>:5173). IPv4 rather than Vite's default
+    // "localhost", which on many systems means the IPv6 loopback only, and
+    // Firefox cannot set up a WebRTC connection (peer share) from a page
+    // loaded over IPv6 loopback on a machine without IPv6 connectivity.
+    host: '0.0.0.0',
     port: 5173,
     proxy: {
       '/api': apiTarget,
