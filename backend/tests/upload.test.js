@@ -150,12 +150,12 @@ describe('POST /api/shares/:code/complete', () => {
     assert.ok(Math.abs(Date.parse(body.expiresAt) - (Date.now() + 12 * 3600e3)) < 5000);
   });
 
-  test('keeps a first-download share for at most 30 days', async () => {
+  test('keeps a first-download share for at most 7 days', async () => {
     const share = await createShare([{ name: 'a.txt', size: 5 }], { type: 'first-download' });
     await put(share, share.files[0].id, Buffer.from('hello'));
     const { body } = await complete(share);
     assert.equal(body.burnAfterDownload, true);
-    assert.ok(Math.abs(Date.parse(body.expiresAt) - (Date.now() + 30 * 864e5)) < 5000);
+    assert.ok(Math.abs(Date.parse(body.expiresAt) - (Date.now() + 7 * 864e5)) < 5000);
   });
 
   test('refuses with 409 and lists the files still missing', async () => {

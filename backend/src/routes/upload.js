@@ -13,7 +13,7 @@ import { bearerToken, isBase64Bytes, loadShare } from './common.js';
 const HOUR = 3600_000;
 const DURATION_HOURS = new Set([1, 12, 24, 7 * 24]);
 const PENDING_TTL = HOUR; // time allowed to finish uploading
-const FIRST_DOWNLOAD_TTL = 30 * 24 * HOUR; // cap for shares nobody downloads
+const FIRST_DOWNLOAD_TTL = 7 * 24 * HOUR; // cap for shares nobody downloads
 const GCM_TAG_BYTES = 16;
 const CHUNK_SIZE_RANGE = [64 * 1024, 16 * 1024 * 1024];
 
