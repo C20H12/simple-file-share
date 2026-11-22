@@ -147,3 +147,14 @@ restarted. On the server, Caddy serves the build, forwards `/api` and `/peer`
 to the backend and provides HTTPS; MinIO runs in Docker. The deploy needs the
 repository secrets `DEPLOY_KEY`, `DEPLOY_HOST`, `DEPLOY_USER` and
 `DEPLOY_KNOWN_HOSTS`, and is skipped until they are set.
+
+The deploy user (`DEPLOY_USER`) owns `/srv/handoff`, is in the `docker` group
+so it can run MinIO, and may restart the service without a password and
+nothing else, through a sudoers rule such as:
+
+```
+handoff ALL=(root) NOPASSWD: /usr/bin/systemctl restart handoff
+```
+
+When moving to a new server, update `DEPLOY_HOST` and `DEPLOY_KNOWN_HOSTS`
+(`ssh-keyscan <server>`) along with the DNS record.
