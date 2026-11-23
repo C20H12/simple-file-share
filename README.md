@@ -1,5 +1,7 @@
 # Handoff — simple file share
 
+**Live at [file.c20h12.xyz](https://file.c20h12.xyz)**
+
 A small web app for handing files to someone else, two ways:
 
 - **Upload** — up to 50 MB per share. Files are stored on the server under a
