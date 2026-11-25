@@ -105,6 +105,8 @@ a.file-link:hover{color:var(--color-text)}
 .drop:hover{background:var(--color-neutral-300)}
 .picked-summary{font-size:12px;padding-bottom:6px;border-bottom:1px solid var(--color-divider)}
 .picked-row{display:flex;align-items:center;gap:12px;padding:8px 0;border-bottom:1px solid var(--color-divider)}
+.text-toggle{align-self:flex-start;padding:2px 0;font-size:14px}
+textarea.text-entry{min-height:160px;font:inherit}
 .picked-row>.name{flex:1;min-width:0;font-weight:800}
 .options{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(200px,100%),1fr));gap:12px}
 .between{display:flex;justify-content:space-between;gap:12px}

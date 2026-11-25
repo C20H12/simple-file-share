@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import QRCode from 'qrcode';
 import Icon from './Icon.jsx';
 import ProgressBar from './ProgressBar.jsx';
@@ -36,6 +36,25 @@ function FilePicker({ files, onAdd, onRemove }) {
         </div>
       )}
     </>
+  );
+}
+
+// Text typed or pasted in place of files. It is sent as a single text file.
+const TEXT_FILE_NAME = 'text.txt';
+
+function TextEntry({ text, onChange }) {
+  return (
+    <div className="field">
+      <label htmlFor="send-text">Text</label>
+      <textarea
+        id="send-text"
+        className="input text-entry"
+        autoFocus
+        placeholder="Type or paste the text to send"
+        value={text}
+        onChange={(e) => onChange(e.target.value)}
+      />
+    </div>
   );
 }
 
@@ -88,6 +107,8 @@ export default function SendDialog({ mode, onClose }) {
   const isUpload = mode === 'upload';
   const [step, setStep] = useState('select'); // select -> progress -> done
   const [files, setFiles] = useState([]); // File objects
+  const [textMode, setTextMode] = useState(false); // sending typed text instead of files
+  const [text, setText] = useState('');
   const [expiry, setExpiry] = useState(DEFAULT_EXPIRY);
   const [password, setPassword] = useState('');
   const [progress, setProgress] = useState({ phase: 'uploading', percent: 0 });
@@ -96,6 +117,9 @@ export default function SendDialog({ mode, onClose }) {
   const [starting, setStarting] = useState(false);
   const [peer, setPeer] = useState({ status: 'waiting', percent: 0 });
   const [copied, copy] = useCopied();
+  // What is sent: the picked files, or the text as one file.
+  const textFile = useMemo(() => (text ? new File([text], TEXT_FILE_NAME, { type: 'text/plain' }) : null), [text]);
+  const picked = textMode ? (textFile ? [textFile] : []) : files;
   const abortRef = useRef(null);
   const hostRef = useRef(null);
   const open = useRef(false);
@@ -125,7 +149,7 @@ export default function SendDialog({ mode, onClose }) {
     setProgress({ phase: 'uploading', percent: 0 });
     setStep('progress');
     try {
-      const result = await uploadShare({ files, expiry, password, onProgress: setProgress, signal: controller.signal });
+      const result = await uploadShare({ files: picked, expiry, password, onProgress: setProgress, signal: controller.signal });
       recordUploaded(result);
       setShare(result);
       setStep('done');
@@ -144,7 +168,7 @@ export default function SendDialog({ mode, onClose }) {
     setError('');
     setStarting(true);
     try {
-      const host = await hostFiles(files, (state) => { if (open.current) setPeer(state); });
+      const host = await hostFiles(picked, (state) => { if (open.current) setPeer(state); });
       if (!open.current) { host.stop(); return; }
       hostRef.current = host;
       setShare({ code: host.code });
@@ -155,8 +179,8 @@ export default function SendDialog({ mode, onClose }) {
     if (open.current) setStarting(false);
   };
 
-  const tooLarge = isUpload ? uploadTooLarge(files) : null;
-  const canContinue = files.length > 0 && (isUpload ? !tooLarge : !starting);
+  const tooLarge = isUpload ? uploadTooLarge(picked) : null;
+  const canContinue = picked.length > 0 && (isUpload ? !tooLarge : !starting);
   const expiryLabel = expiry.toLowerCase();
 
   return (
@@ -169,11 +193,18 @@ export default function SendDialog({ mode, onClose }) {
 
         {step === 'select' && (
           <>
-            <FilePicker
-              files={files}
-              onAdd={(add) => setFiles((fs) => fs.concat(add))}
-              onRemove={(i) => setFiles((fs) => fs.filter((_, j) => j !== i))}
-            />
+            {textMode ? (
+              <TextEntry text={text} onChange={setText} />
+            ) : (
+              <FilePicker
+                files={files}
+                onAdd={(add) => setFiles((fs) => fs.concat(add))}
+                onRemove={(i) => setFiles((fs) => fs.filter((_, j) => j !== i))}
+              />
+            )}
+            <button type="button" className="btn btn-ghost text-toggle" onClick={() => setTextMode((on) => !on)}>
+              {textMode ? 'Choose files instead' : `${isUpload ? 'Upload' : 'Send'} text only`}
+            </button>
             {tooLarge && <p className="notice" role="alert">{tooLarge}</p>}
             {isUpload ? (
               <div className="options">
@@ -203,7 +234,7 @@ export default function SendDialog({ mode, onClose }) {
         {step === 'progress' && (
           <>
             <div className="between strong">
-              <span>{progress.phase === 'encrypting' ? 'Encrypting' : 'Uploading'} {summary(files)}</span>
+              <span>{progress.phase === 'encrypting' ? 'Encrypting' : 'Uploading'} {summary(picked)}</span>
               <span className="num">{progress.percent}%</span>
             </div>
             <ProgressBar value={progress.percent} />
@@ -250,7 +281,7 @@ export default function SendDialog({ mode, onClose }) {
                 </div>
               </>
             ) : (
-              <PeerStatus peer={peer} files={files} onDone={onClose} />
+              <PeerStatus peer={peer} files={picked} onDone={onClose} />
             )}
           </>
         )}

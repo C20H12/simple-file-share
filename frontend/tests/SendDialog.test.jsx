@@ -75,3 +75,49 @@ describe('when the server is out of storage', () => {
     expect(screen.getByText(/use Peer share, which sends files directly/)).toBeTruthy();
   });
 });
+
+describe('text only', () => {
+  const toggle = (name) => screen.getByRole('button', { name });
+
+  test('the underlined link swaps the file picker for a text box, and back, keeping picked files', () => {
+    const { container } = render(<SendDialog mode="upload" onClose={vi.fn()} />);
+    pick(container, [1000]);
+    fireEvent.click(toggle('Upload text only'));
+    expect(screen.getByLabelText('Text').tagName).toBe('TEXTAREA');
+    expect(screen.queryByText('Choose files')).toBeNull();
+    fireEvent.click(toggle('Choose files instead'));
+    expect(screen.queryByLabelText('Text')).toBeNull();
+    expect(screen.getByText('file0.bin')).toBeTruthy();
+  });
+
+  test('Continue stays disabled until some text is typed', () => {
+    render(<SendDialog mode="upload" onClose={vi.fn()} />);
+    fireEvent.click(toggle('Upload text only'));
+    expect(continueButton().disabled).toBe(true);
+    fireEvent.change(screen.getByLabelText('Text'), { target: { value: 'hello' } });
+    expect(continueButton().disabled).toBe(false);
+  });
+
+  test('the text is uploaded as text.txt', async () => {
+    uploadShare.mockReturnValueOnce(new Promise(() => {}));
+    render(<SendDialog mode="upload" onClose={vi.fn()} />);
+    fireEvent.click(toggle('Upload text only'));
+    fireEvent.change(screen.getByLabelText('Text'), { target: { value: 'meeting at 3, room 2B ✓' } });
+    fireEvent.click(continueButton());
+    const [{ files }] = uploadShare.mock.calls.at(-1);
+    expect(files).toHaveLength(1);
+    expect(files[0].name).toBe('text.txt');
+    expect(files[0].type).toBe('text/plain');
+    const content = await new Promise((resolve) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(reader.result);
+      reader.readAsText(files[0]);
+    });
+    expect(content).toBe('meeting at 3, room 2B ✓');
+  });
+
+  test('in peer share the link says send', () => {
+    render(<SendDialog mode="peer" onClose={vi.fn()} />);
+    expect(toggle('Send text only')).toBeTruthy();
+  });
+});
