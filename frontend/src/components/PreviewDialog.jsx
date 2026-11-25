@@ -1,6 +1,6 @@
 import { Suspense, lazy, useEffect, useRef, useState } from 'react';
 import Icon from './Icon.jsx';
-import { canPreview, formatSize, isPdf } from '../lib/format.js';
+import { canPreview, formatSize, isPdf, isText } from '../lib/format.js';
 import { saveBlob } from '../lib/download.js';
 
 const PdfPages = lazy(() => import('./PdfPages.jsx'));
@@ -16,9 +16,10 @@ export default function PreviewDialog({ files, index, load, hrefFor, onNavigate,
   const previewable = files.map((_, i) => i).filter((i) => canPreview(files[i]));
   const pos = previewable.indexOf(index);
   const pdf = isPdf(file.name);
+  const text = isText(file.name);
   const href = hrefFor(file);
 
-  // loading | ready (with blob, and url for images) | failed
+  // loading | ready (with blob; url for images, content for text) | failed
   const [view, setView] = useState({ status: 'loading' });
   const [pages, setPages] = useState(null);
   const loadRef = useRef(load);
@@ -28,11 +29,16 @@ export default function PreviewDialog({ files, index, load, hrefFor, onNavigate,
     let url;
     setView({ status: 'loading' });
     setPages(null);
+    const { name } = files[index];
     loadRef.current(files[index])
-      .then((blob) => {
+      .then(async (blob) => {
+        // Text is read as UTF-8 and shown as plain text, never interpreted.
+        // A NUL byte means the file is binary despite its name.
+        const content = isText(name) ? await blob.text() : undefined;
         if (!live) return;
-        if (!isPdf(files[index].name)) url = URL.createObjectURL(blob);
-        setView({ status: 'ready', blob, url });
+        if (content?.includes('\u0000')) throw new Error('not text');
+        if (!isPdf(name) && !isText(name)) url = URL.createObjectURL(blob);
+        setView({ status: 'ready', blob, url, content });
       })
       .catch(() => { if (live) setView({ status: 'failed' }); });
     return () => {
@@ -43,8 +49,10 @@ export default function PreviewDialog({ files, index, load, hrefFor, onNavigate,
 
   const fail = () => setView({ status: 'failed' });
 
+  const lines = view.content == null ? null : view.content.split('\n').length - (view.content.endsWith('\n') ? 1 : 0);
   const meta = [
-    pdf ? 'PDF' : 'Image',
+    pdf ? 'PDF' : text ? 'Text' : 'Image',
+    lines != null && `${lines} ${lines === 1 ? 'line' : 'lines'}`,
     pages && `${pages} ${pages === 1 ? 'page' : 'pages'}`,
     formatSize(file.size),
     previewable.length > 1 && `${pos + 1} of ${previewable.length}`,
@@ -55,6 +63,8 @@ export default function PreviewDialog({ files, index, load, hrefFor, onNavigate,
     body = <Note>Loading preview…</Note>;
   } else if (view.status === 'failed') {
     body = <Note>This file can’t be previewed here. Download it to open it.</Note>;
+  } else if (text) {
+    body = <pre className="pv-text">{view.content}</pre>;
   } else if (pdf) {
     body = (
       <Suspense fallback={<Note>Loading preview…</Note>}>

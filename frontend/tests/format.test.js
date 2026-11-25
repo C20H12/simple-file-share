@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'vitest';
 import {
-  PREVIEW_MAX_BYTES, canPreview, countLabel, extOf, formatCode, formatCountdown, formatSize, isImage, isPdf, summary, totalSize,
+  PREVIEW_MAX_BYTES, TEXT_PREVIEW_MAX_BYTES, canPreview, countLabel, extOf, formatCode, formatCountdown, formatSize, isImage, isPdf, isText, summary, totalSize,
 } from '../src/lib/format.js';
 
 describe('formatSize', () => {
@@ -60,6 +60,11 @@ describe('file types', () => {
     for (const name of ['a.svg', 'a.bmp', 'a.pdf', 'jpg.txt']) expect(isImage(name), name).toBe(false);
   });
 
+  test('isText recognises common plain-text formats, in any case', () => {
+    for (const name of ['a.txt', 'a.MD', 'a.csv', 'a.tsv', 'a.log', 'a.json', 'a.xml', 'a.yaml', 'a.yml', 'a.ini', 'a.toml']) expect(isText(name), name).toBe(true);
+    for (const name of ['a.html', 'a.svg', 'a.js', 'a.docx', 'a.pdf', 'txt.zip']) expect(isText(name), name).toBe(false);
+  });
+
   test('isPdf recognises .pdf only', () => {
     expect(isPdf('doc.pdf')).toBe(true);
     expect(isPdf('doc.PDF')).toBe(true);
@@ -78,7 +83,15 @@ describe('canPreview', () => {
   });
 
   test('refuses other file types whatever their size', () => {
-    expect(canPreview({ name: 'notes.txt', size: 10 })).toBe(false);
+    expect(canPreview({ name: 'archive.zip', size: 10 })).toBe(false);
+    expect(canPreview({ name: 'page.html', size: 10 })).toBe(false);
+  });
+
+  test('allows text files up to their own, smaller limit', () => {
+    expect(TEXT_PREVIEW_MAX_BYTES).toBe(2 * 1024 * 1024);
+    expect(canPreview({ name: 'text.txt', size: 0 })).toBe(true);
+    expect(canPreview({ name: 'notes.md', size: TEXT_PREVIEW_MAX_BYTES })).toBe(true);
+    expect(canPreview({ name: 'big.log', size: TEXT_PREVIEW_MAX_BYTES + 1 })).toBe(false);
   });
 });
 
